@@ -149,8 +149,8 @@ export function HoldersBrowser({
       )}
 
       {error && (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-          Couldn’t load the holder list — {error}.
+        <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger" title={error}>
+          Couldn’t load the holder list. Refresh the page to try again.
         </div>
       )}
 
@@ -162,12 +162,11 @@ export function HoldersBrowser({
           <ShieldAlert className="h-4 w-4" aria-hidden />
         </Alert.Indicator>
         <Alert.Content>
-          <Alert.Title>Suspicious activity means no draw entry</Alert.Title>
+          <Alert.Title>Some wallets aren’t entered in the draw</Alert.Title>
           <Alert.Description>
-            Wallets that look like a sybil cluster, a bot/sniper or a split
-            wallet still hold the token, but they are removed from the eligible
-            pool before the drand shuffle. Think one of yours was flagged?
-            Verify the clusters on{" "}
+            Liquidity accounts hold the token but can never win. Sybil clusters,
+            bots and split wallets are dropped before the drand shuffle. Think
+            it’s wrong? Check the clusters on{" "}
             {bubblemapsUrl ? (
               <ExternalLink
                 href={bubblemapsUrl}
@@ -235,7 +234,7 @@ export function HoldersBrowser({
                             {h.excludedBy === "venue" ? (
                               <VenueChip
                                 text="Venue"
-                                title={`${h.excludedLabel ?? "Venue account"} — holds the token as liquidity, so it is not in the draw.`}
+                                title={`${h.excludedLabel ?? "Venue account"}, holds the token as liquidity, so it is not in the draw.`}
                               />
                             ) : (
                               <ExclusionLabelChip label={h.excludedLabel} />
@@ -248,7 +247,7 @@ export function HoldersBrowser({
                           </span>
                         ) : (
                           <Chip size="sm" variant="soft" color="default">
-                            Below min
+                            Below minimum
                           </Chip>
                         )}
                       </TableCell>

@@ -11,7 +11,7 @@ export default function DrawsPage() {
         <div className="max-w-3xl">
           <Typography type="h4">Draw history</Typography>
           <Typography type="body-sm" color="muted" className="mt-1.5 text-pretty">
-            Each round, eligible holders are drawn at random using drand — public randomness no
+            Each round, eligible holders are drawn at random using drand, public randomness no
             one here controls.
           </Typography>
         </div>

@@ -15,7 +15,7 @@ import {
 } from "@heroui/react";
 import { AppShell } from "@/components/AppShell";
 import { useSite } from "@/components/providers/SiteProvider";
-import { Icon, Skeleton, SkeletonRows } from "@/components/ui";
+import { ExternalLink, Icon, Skeleton, SkeletonRows } from "@/components/ui";
 import { explorerUrl, shortAddress, SOL_BALANCE_DIGITS } from "@/lib/format";
 import { DEMO_FEE_TXS } from "@/lib/demo-finance";
 import { summarizeBuyback, type BuybackData } from "@/lib/buyback";
@@ -70,8 +70,8 @@ const PAGE_SIZE = 5;
 export default function TreasuryPage() {
   const [wallets, setWallets] = useState<WalletOverview | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
-  // Draw rows are only needed to reconstruct fee sweeps, so a failure here
-  // degrades the fee table to sample rows instead of breaking the page.
+  // Draw rows are only needed to reconstruct fee sweeps, so a failure here hides
+  // the derived fee rows and marks the history incomplete (never sample rows).
   const [rounds, setRounds] = useState<RoundRow[]>([]);
   const [roundsError, setRoundsError] = useState<string | null>(null);
   // Buyback numbers are a hand-kept ledger in `data/buyback.json` (Admin →
@@ -199,6 +199,14 @@ export default function TreasuryPage() {
     return { rows, live: rows.length > 0, draws: paidDraws.length };
   }, [rounds, buyback]);
 
+  /**
+   * Sample fee rows only when there is genuinely nothing to show AND the draw
+   * ledger was readable: a failed fetch must not masquerade as "no fees yet",
+   * and demo rows must never sit in a half-loaded table.
+   */
+  const feeSample = !roundsError && !feeTxs.live && feeTxs.draws === 0;
+  const feeRows = feeTxs.live ? feeTxs.rows : feeSample ? DEMO_FEE_TXS : [];
+
 
   return (
     <AppShell title="Treasury">
@@ -208,7 +216,7 @@ export default function TreasuryPage() {
             <Typography type="h4">Treasury</Typography>
             <Typography type="body-sm" color="muted" className="mt-1.5">
               Where the SOL actually sits: the platform wallet that pays the winners, the fee wallet,
-              every fee sweep on chain, and what the buyback programme has bought and burned.
+              every fee and payout on chain, and what the buyback programme has bought and burned.
             </Typography>
           </div>
           {wallets && (
@@ -223,7 +231,7 @@ export default function TreasuryPage() {
             className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger"
             title={walletError}
           >
-            Balances may be stale — the wallet service couldn’t be reached just now.
+            Some figures couldn’t be refreshed just now, so they may be out of date.
           </div>
         )}
         {roundsError && (
@@ -231,7 +239,8 @@ export default function TreasuryPage() {
             className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger"
             title={roundsError}
           >
-            The fee ledger couldn’t be read, so the fee table below shows sample rows.
+            The draw ledger couldn’t be read, so the payout and fee history below may be
+            incomplete.
           </div>
         )}
         {buybackError && (
@@ -239,8 +248,7 @@ export default function TreasuryPage() {
             className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger"
             title={buybackError}
           >
-            The buyback ledger couldn’t be read — {`data/buyback.json`} needs a fix
-            (Admin → Buyback).
+            The buyback ledger couldn’t be read, so its figures are unavailable.
           </div>
         )}
 
@@ -253,10 +261,18 @@ export default function TreasuryPage() {
                 address={wallets?.platform.address ?? null}
                 balanceSol={wallets?.platform.balanceSol ?? null}
                 caption="pays winner airdrops and network fees"
-                emptyNote="Platform wallet key isn’t configured on this deployment."
+                emptyNote={
+                  wallets
+                    ? "The platform wallet isn’t available yet."
+                    : "Wallet details couldn’t be loaded just now."
+                }
                 txAria="Recent platform wallet transactions"
                 txs={platformTxs.rows}
-                txEmptyNote="No payout yet — one row appears per completed draw."
+                txEmptyNote={
+                  roundsError
+                    ? "Payout history couldn’t be loaded."
+                    : "No payout transaction yet. One appears when a draw settles."
+                }
               />
 
               <WalletCard
@@ -271,24 +287,35 @@ export default function TreasuryPage() {
                       : null
                 }
                 caption={
-                  wallets?.fee.configured
-                    ? "platform fees swept here at payout time · buybacks spend out of it"
-                    : "fees so far, still sitting on the platform wallet"
+                  !wallets
+                    ? "balance unavailable"
+                    : wallets.fee.configured
+                      ? "platform fees are swept here at payout time, and buybacks are paid from it"
+                      : wallets.fee.ledgerAvailable
+                        ? "fees so far, still sitting on the platform wallet"
+                        : "fee total unavailable because the fee ledger couldn’t be read"
                 }
-                emptyNote="Set PLATFORM_TREASURY_SECRET to sweep fees into a dedicated wallet."
-                txAria="Fee wallet activity — fees earned and buyback spends"
-                txs={
-                  feeTxs.live ? feeTxs.rows : feeTxs.draws > 0 ? [] : DEMO_FEE_TXS
+                emptyNote={
+                  wallets
+                    ? "Fees stay on the platform wallet. No separate fee wallet is in use."
+                    : "Wallet details couldn’t be loaded just now."
                 }
-                txSample={!feeTxs.live && feeTxs.draws === 0}
-                txEmptyNote="No fee sweep or buyback spend recorded yet."
+                txAria="Fee wallet activity, fees earned and buyback spends"
+                txs={feeRows}
+                txSample={feeSample}
+                txEmptyNote={
+                  roundsError && !feeTxs.live
+                    ? "Fee history couldn’t be loaded."
+                    : "No fee sweep or buyback spend recorded yet."
+                }
               />
             </div>
 
-            <BuybackCard net={net} data={buyback} />
+            <BuybackCard net={net} data={buyback} unavailable={!!buybackError} />
 
             <PolicyCard
               net={net}
+              available={!!wallets}
               reserveSol={wallets?.reserveSol ?? 0.05}
               feeBps={wallets?.feeBps ?? 0}
               feeConfigured={wallets?.fee.configured ?? false}
@@ -371,7 +398,7 @@ function WalletCard({
               href={explorerUrl(address, "address", net)}
               target="_blank"
               rel="noreferrer"
-              title={`${address} — open on the explorer`}
+              title={`${address}, open on the explorer`}
               aria-label={`Open ${label} address on the explorer`}
               className="-mr-1.5 mt-px inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted transition hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border)"
             >
@@ -538,9 +565,12 @@ function TxTable({
 function BuybackCard({
   net,
   data,
+  unavailable,
 }: {
   net: "mainnet" | "devnet";
   data: BuybackData | null;
+  /** True when /api/buyback failed: figures are dashes, not zeros. */
+  unavailable: boolean;
 }) {
   const s = useMemo(() => (data ? summarizeBuyback(data) : null), [data]);
   const { tokenName } = useSite();
@@ -554,8 +584,13 @@ function BuybackCard({
           <h2 className="text-sm font-semibold tracking-tight">Buyback &amp; burn</h2>
         </div>
         <span className="text-xs text-muted">
-          {runs} completed {runs === 1 ? "run" : "runs"}
-          {data?.nextRunAt ? ` · next ${fmtDayMonth(data.nextRunAt)}` : ""}
+          {unavailable
+            ? "ledger unavailable"
+            : runs === 0
+              ? "No runs yet"
+              : `${runs} completed ${runs === 1 ? "run" : "runs"}${
+                  data?.nextRunAt ? ` · next run ${fmtDayMonth(data.nextRunAt)}` : ""
+                }`}
         </span>
       </div>
 
@@ -564,7 +599,13 @@ function BuybackCard({
         <BuybackStat
           label="Bought"
           value={s && s.bought > 0 ? s.bought.toLocaleString("en-US") : "—"}
-          caption={`${tokenName} tokens`}
+          caption={
+            unavailable
+              ? "tokens unavailable"
+              : s && s.bought > 0
+                ? `${tokenName} tokens`
+                : "no buybacks yet"
+          }
         />
         <BuybackStat
           label="Burned"
@@ -572,19 +613,29 @@ function BuybackCard({
           caption={
             s && data && data.supply > 0
               ? `${s.burnedPct.toFixed(2)}% of supply`
-              : "supply not set"
+              : unavailable
+                ? "supply unavailable"
+                : "supply not recorded"
           }
         />
         <BuybackStat
           label="SOL spent"
           value={s && s.spentSol > 0 ? fmtSolPrecise(s.spentSol) : "—"}
-          caption={`in ${runs} ${runs === 1 ? "run" : "runs"}`}
+          caption={
+            unavailable
+              ? "not available"
+              : runs === 0
+                ? "no runs yet"
+                : `in ${runs} ${runs === 1 ? "run" : "runs"}`
+          }
         />
       </dl>
 
       {txs.length === 0 ? (
         <p className="border-t border-(--border) px-5 py-4 text-sm text-muted">
-          No buyback recorded yet — add the buy and burn rows in Admin → Buyback.
+          {unavailable
+            ? "The buyback ledger couldn’t be loaded. Refresh the page to try again."
+            : "No buyback recorded yet."}
         </p>
       ) : (
         <div className="table-bordered table-compact overflow-x-auto">
@@ -677,6 +728,7 @@ function BuybackStat({
  */
 function PolicyCard({
   net,
+  available,
   reserveSol,
   feeBps,
   feeConfigured,
@@ -684,6 +736,8 @@ function PolicyCard({
   buybackSharePct,
 }: {
   net: "mainnet" | "devnet";
+  /** False when /api/wallets failed: the fallback numbers must not be printed. */
+  available: boolean;
   reserveSol: number;
   feeBps: number;
   feeConfigured: boolean;
@@ -691,51 +745,58 @@ function PolicyCard({
   buybackSharePct: number | null;
 }) {
   const feePct = `${Number((feeBps / 100).toFixed(2))}%`;
-  const sharePct = buybackSharePct != null ? `${buybackSharePct}%` : "—";
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-(--border) bg-surface px-5 py-4">
       <h2 className="text-sm font-semibold tracking-tight">How the money moves</h2>
 
-      <dl className="flex flex-col gap-2 text-sm">
-        <PolicyRow label="Prize pool">
-          Everything above the{" "}
-          <span className="font-mono text-foreground">{fmtSolPrecise(reserveSol)}</span> reserve,
-          which stays put for network fees.
-        </PolicyRow>
-        <PolicyRow label="Platform fee">
-          <span className="font-mono text-foreground">{feePct}</span> of each pool, taken before
-          winners split the rest.
-        </PolicyRow>
-        <PolicyRow label="Fee destination">
-          <span className="font-mono text-foreground">{sharePct}</span> of fees funds buybacks{" "}
-          {feeConfigured && feeAddress ? (
-            <>
-              from{" "}
-              <a
+      {!available ? (
+        <p className="text-sm text-muted">
+          Reserve and fee figures couldn’t be loaded. Refresh the page to try again.
+        </p>
+      ) : (
+        <dl className="flex flex-col gap-2 text-sm">
+          <PolicyRow label="Prize pool">
+            Everything above the{" "}
+            <span className="font-mono text-foreground">{fmtSolPrecise(reserveSol)}</span> reserve,
+            which stays put for network fees.
+          </PolicyRow>
+          <PolicyRow label="Platform fee">
+            <span className="font-mono text-foreground">{feePct}</span> of each pool, taken before
+            winners split the rest.
+          </PolicyRow>
+          <PolicyRow label="Fee destination">
+            {buybackSharePct != null ? (
+              <>
+                <span className="font-mono text-foreground">{buybackSharePct}%</span> of each fee
+                goes to buybacks, paid from{" "}
+              </>
+            ) : (
+              <>Buyback share unavailable right now. Fees are collected from{" "}</>
+            )}
+            {feeConfigured && feeAddress ? (
+              <ExternalLink
                 href={explorerUrl(feeAddress, "address", net)}
-                target="_blank"
-                rel="noreferrer"
-                title={`${feeAddress} — open on the explorer`}
-                className="inline-flex items-center gap-1 font-mono text-foreground transition hover:text-accent"
+                tone="foreground"
+                className="font-mono"
+                iconClassName="h-3 w-3 opacity-50"
               >
                 {shortAddress(feeAddress, 6, 6)}
-                <Icon name="arrow-up-right" className="h-3.5 w-3.5 text-muted" />
-              </a>
-              .
-            </>
-          ) : (
-            <>— no separate key configured, so fees stay on the platform wallet.</>
-          )}
-        </PolicyRow>
-      </dl>
+              </ExternalLink>
+            ) : (
+              <span>the platform wallet</span>
+            )}
+            .
+          </PolicyRow>
+        </dl>
+      )}
 
       <p className="text-xs text-muted">
-        Every payout and fee sweep is a public Solana transaction.{" "}
+        {available && <>Payouts and fee sweeps are public Solana transactions.{" "}</>}
         <Link href="/verify" className="text-foreground underline decoration-(--border) underline-offset-2 transition hover:text-accent">
           Verify a draw
         </Link>{" "}
-        replays any round;{" "}
+        replays any round, and{" "}
         <Link href="/how-it-works" className="text-foreground underline decoration-(--border) underline-offset-2 transition hover:text-accent">
           how it works
         </Link>{" "}

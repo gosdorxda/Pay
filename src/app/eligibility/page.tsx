@@ -57,12 +57,12 @@ export default function EligibilityPage() {
       if (!r.ok) {
         setError(
           json.error === "Invalid Solana address format."
-            ? "That doesn’t look like a Solana wallet address — check for missing or extra characters."
-            : `Couldn’t check that wallet (${r.status}).`
+            ? "That doesn’t look like a Solana wallet address, check for missing or extra characters."
+            : "Couldn’t check that wallet. Please try again."
         );
       } else setData(json as EligResp);
     } catch {
-      setError("Couldn’t reach the server — check your connection and try again.");
+      setError("Couldn’t reach the server, check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -74,7 +74,7 @@ export default function EligibilityPage() {
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
         <HoldersBrowser
           title="Eligibility"
-          subtitle={`Hold at least the minimum ${tokenName} and you’re in every draw automatically. Check your wallet below, or browse the full holder list.`}
+          subtitle={`Hold at least the minimum ${tokenName} and you’re entered in every draw automatically, no claim, no sign-up. Check a wallet below or browse the holder list.`}
         >
           <div className="flex flex-col gap-4">
 
@@ -99,7 +99,8 @@ export default function EligibilityPage() {
               </button>
             </div>
             <p className="mt-2 text-xs text-muted">
-              The holder list refreshes every few minutes, so a recent buy may not show up yet.
+              Balances come from a snapshot refreshed every few minutes, so a recent
+              buy may not show up yet.
             </p>
           </form>
 
@@ -176,7 +177,7 @@ function ResultCard({ data }: { data: EligResp }) {
     ? { cls: "border-success/30 bg-success/10", iconBg: "bg-success/15 text-success", icon: "face-slightly-smiling", chipColor: "success" as const, chipText: "Eligible" }
     : data.found
       ? { cls: "border-danger/30 bg-danger/10", iconBg: "bg-danger/15 text-danger", icon: "face-slightly-frowning", chipColor: "danger" as const, chipText: "Not eligible" }
-      : { cls: "border-(--border) bg-default/40", iconBg: "bg-default text-muted", icon: "search", chipColor: "default" as const, chipText: "Not in list" };
+      : { cls: "border-(--border) bg-default/40", iconBg: "bg-default text-muted", icon: "search", chipColor: "default" as const, chipText: "Not listed" };
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -195,9 +196,9 @@ function ResultCard({ data }: { data: EligResp }) {
               <>
                 <span className="text-xl sm:text-2xl font-bold tracking-tight text-warning">Not in the draw</span>
                 <Typography type="body-sm" color="muted">
-                  This wallet was filtered out before the drand shuffle, so it
+                  This wallet is filtered out before the drand shuffle, so it
                   can’t win. Its balance still shows in the holder table, but it
-                  has no entry in the prize pool.
+                  isn’t entered in the draw.
                 </Typography>
               </>
             ) : data.eligible ? (
@@ -217,7 +218,7 @@ function ResultCard({ data }: { data: EligResp }) {
             ) : (
               <>
                 <span className="text-xl sm:text-2xl font-bold tracking-tight">Not in the holder list</span>
-                <Typography type="body-sm" color="muted">This wallet hasn’t held {token} yet. The list refreshes every few minutes — check again after your first buy.</Typography>
+                <Typography type="body-sm" color="muted">This wallet isn’t in the holder list yet. If you just bought {token}, check again in a few minutes.</Typography>
               </>
             )}
           </div>
@@ -300,12 +301,14 @@ function ResultCard({ data }: { data: EligResp }) {
               <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
             </a>
           </Row>
-          <Row label="Snapshot">
+          <Row label="List updated">
             <span className="text-muted">{timeAgo(data.lastSyncAt)}</span>
           </Row>
-          {data.capturedAt && data.capturedAt !== data.lastSyncAt && (
-            <Row label="Balance from">
-              <span className="text-muted">{timeAgo(data.capturedAt)}</span>
+          {(!data.capturedAt || data.capturedAt !== data.lastSyncAt) && (
+            <Row label="Balance read">
+              <span className="text-muted">
+                {data.capturedAt ? timeAgo(data.capturedAt) : "not in the latest snapshot"}
+              </span>
             </Row>
           )}
         </dl>
@@ -319,8 +322,8 @@ function ResultCard({ data }: { data: EligResp }) {
       )}
 
       {data.dbError && (
-        <div className="lg:col-span-2 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
-          The holder list couldn’t be read — {data.dbError}.
+        <div className="lg:col-span-2 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger" title={data.dbError}>
+          The holder list couldn’t be read. Refresh the page to try again.
         </div>
       )}
     </div>

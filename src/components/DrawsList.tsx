@@ -149,13 +149,13 @@ function failureReason(raw: string | null): string {
   if (!raw) return "Something went wrong and this draw didn’t finish.";
   const s = raw.toLowerCase();
   if (s.includes("rent-exempt minimum")) {
-    return "A prize was too small to create a winner’s wallet, so nothing was paid out — this round needs a bigger prize pool.";
+    return "A prize was too small to create a winner’s wallet, so nothing was paid out, this round needs a bigger prize pool.";
   }
   if (s.includes("failed on-chain") || s.includes("insufficientfunds")) {
     return "The payout transaction failed on-chain, so this draw didn’t pay out.";
   }
   if (s.includes("block height exceeded") || s.includes("has expired")) {
-    return "The payout transaction expired before it could confirm — no SOL left the wallet, so this draw didn’t pay out.";
+    return "The payout transaction expired before it could confirm, no SOL left the wallet, so this draw didn’t pay out.";
   }
   if (s.includes("not retrievable")) {
     return "The payout transaction couldn’t be read back from the network, so this draw is unconfirmed.";
