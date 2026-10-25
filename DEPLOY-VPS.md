@@ -957,6 +957,42 @@ Setelah rebuild, kartu **Admin → Creator Fees** menampilkan kode penyebabnya, 
 `pumpdev unreachable: fetch failed (ENOTFOUND — getaddrinfo ENOTFOUND pumpdev.io)`, bukan lagi
 `fetch failed` saja.
 
+### 13.5 Data terasa lambat sekali setelah restart, lalu normal
+
+GET route yang dibaca halaman sekarang punya **cache TTL in-process** (`src/lib/cache.ts`):
+`/api/status` 10 s, `/api/rounds` 15 s, `/api/stats` 30 s, `/api/holders?page`, `/api/eligibility?address`,
+`/api/rounds/[n]` 30 s, `/api/admin/info` 5 s, `/api/admin/holders` 30 s, `/api/admin/creator-fees` 20 s.
+Nilainya disajikan **stale-while-revalidate**: setelah TTL lewat, respons lama tetap dikirim
+(instan) sambil versi barunya diambil di background — jadi tidak ada request user yang menunggu
+Neon/pumpdev. Aksi admin (draw, sync, claim, auto-claim, tambah/hapus exclusion, reset-data)
+memanggil `clearCache()` supaya angka setelah aksi tidak basi.
+
+Konsekuensinya:
+
+- **Request pertama setelah `systemctl restart` / deploy tetap dingin** (1–6 s: handshake Neon +
+  query). Request berikutnya 2–10 ms. Ini normal, bukan bug.
+- Saat boot, log harus memuat `[db] pool warm (… ms)` dan tiga baris
+  `[warm] /api/status 200 in … ms`, `[warm] /api/rounds …`, `[warm] /api/stats …`.
+  Artinya cache sudah terisi sebelum user pertama datang. Kalau `[warm]` tidak muncul:
+  `NODE_ENV` bukan `production`, atau `PORT` aplikasi bukan `3000` (self-fetch memakai
+  `process.env.PORT || "3000"` — set `PORT` yang benar di systemd).
+- Cache ini **per proses**. Kalau nanti menjalankan >1 instance (mis. `pm2 -i 2`), tiap instance
+  punya cache sendiri — hasilnya tetap benar, hanya hit-rate terbagi.
+- Data bisa tertinggal maksimal sebesar TTL-nya (paling lama 30 s; kartu Creator Fees 20 s).
+  Kalau butuh lebih segar, turunkan angka TTL di route yang bersangkutan.
+
+Cek cepat di server (perhatikan angka pertama vs berikutnya):
+
+```bash
+for i in 1 2 3; do
+  curl -s -o /dev/null -w '%{time_total}s\n' http://127.0.0.1:3000/api/status
+done
+```
+
+`0.00x` pada percobaan ke-2/3 = cache bekerja. Kalau semuanya > 1 s, cek `[warm]` di
+`journalctl -u pay-lottery -n 50` dan pastikan hanya ada satu proses Node yang melayani port itu.
+
+
 ---
 
 ## 14. Checklist akhir

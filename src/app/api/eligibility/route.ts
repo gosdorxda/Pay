@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { fmtTokenHuman } from "@/lib/format";
 import { effectiveMinEligibleBigint } from "@/lib/settings";
 import { getVenueAccountMap } from "@/lib/exclusions";
+import { cached } from "@/lib/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,14 +29,6 @@ const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
  * /api/admin/holders so it works without the full Solana/RPC config.
  */
 export async function GET(request: NextRequest) {
-  const network = (process.env.SOLANA_NETWORK || "mainnet") as
-    | "mainnet"
-    | "devnet";
-  const tokenDecimals = Number(process.env.TOKEN_DECIMALS ?? 6);
-  const tokenMint = process.env.TOKEN_MINT || null;
-  const tokenName = process.env.TOKEN_NAME || "PAY";
-  const threshold = await effectiveMinEligibleBigint();
-
   const address = request.nextUrl.searchParams.get("address")?.trim() ?? "";
 
   if (!address) {
@@ -50,6 +43,25 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  // 30 s per wallet: balances come from the latest snapshot batch, which only
+  // changes on HOLDER_SYNC_CRON (every few minutes). The wallet page refetches
+  // this on each mount, and each build costs 4 DB round-trips.
+  return NextResponse.json(
+    await cached(`eligibility:${address}`, 30_000, () =>
+      buildEligibility(address)
+    )
+  );
+}
+
+async function buildEligibility(address: string) {
+  const network = (process.env.SOLANA_NETWORK || "mainnet") as
+    | "mainnet"
+    | "devnet";
+  const tokenDecimals = Number(process.env.TOKEN_DECIMALS ?? 6);
+  const tokenMint = process.env.TOKEN_MINT || null;
+  const tokenName = process.env.TOKEN_NAME || "PAY";
+  const threshold = await effectiveMinEligibleBigint();
 
   let balanceRaw = 0n;
   let found = false;
@@ -112,7 +124,7 @@ export async function GET(request: NextRequest) {
   const eligible = balanceRaw >= threshold;
   const shortfallRaw = eligible ? 0n : threshold - balanceRaw;
 
-  return NextResponse.json({
+  return {
     address,
     network,
     tokenName,
@@ -139,5 +151,5 @@ export async function GET(request: NextRequest) {
     // when the global holder sync last ran
     lastSyncAt,
     dbError,
-  });
+  };
 }

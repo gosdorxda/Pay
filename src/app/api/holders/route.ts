@@ -9,6 +9,7 @@ import {
   getVenueAccountMap,
   listExcludedWallets,
 } from "@/lib/exclusions";
+import { cached } from "@/lib/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,14 +37,21 @@ const PAGE_SIZE = 15;
  * there is nothing sensitive in exposing it.
  */
 export async function GET(request: NextRequest) {
+  const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") ?? "1") || 1);
+  // 30 s per page: the list is rebuilt from the latest snapshot batch (4 queries
+  // + a full-batch scan), which only changes on HOLDER_SYNC_CRON.
+  return NextResponse.json(
+    await cached(`holders:${page}`, 30_000, () => buildHolders(page))
+  );
+}
+
+async function buildHolders(page: number) {
   const network = (process.env.SOLANA_NETWORK || "mainnet") as
     | "mainnet"
     | "devnet";
   const tokenDecimals = Number(process.env.TOKEN_DECIMALS ?? 6);
   const tokenMint = process.env.TOKEN_MINT || null;
   const threshold = await effectiveMinEligibleBigint();
-
-  const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") ?? "1") || 1);
 
   let capturedAt: string | null = null;
   let holders: {
@@ -134,7 +142,7 @@ export async function GET(request: NextRequest) {
     dbError = (e as Error).message;
   }
 
-  return NextResponse.json({
+  return {
     network,
     tokenMint,
     tokenDecimals,
@@ -150,5 +158,5 @@ export async function GET(request: NextRequest) {
     totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
     holders,
     dbError,
-  });
+  };
 }
