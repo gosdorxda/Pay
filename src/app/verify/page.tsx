@@ -232,7 +232,7 @@ export default function VerifyPage() {
         if (!alive) return;
         setBeaconResult({
           state: "error",
-          detail: "Couldn't reach drand.sh from this browser. Check the connection and refresh.",
+          detail: "drand.sh couldn't be reached or returned an error. Refresh to try again.",
         });
       });
 
