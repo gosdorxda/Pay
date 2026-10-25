@@ -6,7 +6,7 @@ import { CircleCheck, CircleX, Clock, Minus } from "lucide-react";
 import { Button, Chip } from "@heroui/react";
 import { DrandBeacon } from "@/components/DrandBeacon";
 import { CountUp, Icon, Skeleton, SkeletonRows } from "@/components/ui";
-import { fmtSolHuman, timeAgo } from "@/lib/format";
+import { fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
 
 type Winner = {
   rank: number;
@@ -199,33 +199,52 @@ export default function DrawsList({
   const [err, setErr] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(5);
 
-  const fetchRounds = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
+  const fetchRounds = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setErr(null);
+    }
     try {
       const r = await fetch("/api/rounds", { cache: "no-store" });
       setData((await r.json()) as RoundsResponse);
+      setErr(null);
     } catch (e) {
-      setErr((e as Error).message);
-      setData(null);
+      // A failed background refresh keeps the last good snapshot on screen; only
+      // a first load owns the error state.
+      if (!silent) {
+        setErr((e as Error).message);
+        setData(null);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
+  /* First load, then a quiet 15 s refresh — the same window the API caches, so a
+     tab left open keeps "Latest draw" honest and picks up newly settled rounds
+     without flashing the skeletons. Skipped while the tab is in the background. */
   useEffect(() => {
     fetchRounds();
+    const id = window.setInterval(() => {
+      if (!document.hidden) fetchRounds(true);
+    }, 15_000);
+    return () => window.clearInterval(id);
   }, [fetchRounds]);
 
   const net = data?.network ?? "mainnet";
   const chain = data?.chain;
   const visibleRounds = data?.rounds.slice(0, visibleCount) ?? [];
 
-  // Summary stats for the header bar
+  // Summary stats for the header bar. `totalPaid` counts only winners whose
+  // payout actually landed (payoutTx set · the tx is atomic, so this is money
+  // that moved), and both figures describe the loaded page of rounds — the API
+  // caps it at the latest 50, which the note under the card spells out.
   const totalRounds = data?.rounds.length ?? 0;
   const totalPaid =
     data?.rounds.reduce(
-      (sum, r) => sum + r.winners.reduce((s, w) => s + w.amountSol, 0),
+      (sum, r) =>
+        sum +
+        r.winners.reduce((s, w) => s + (w.payoutTx ? w.amountSol : 0), 0),
       0,
     ) ?? 0;
   const latestRound = data?.rounds[0] ?? null;
@@ -238,10 +257,31 @@ export default function DrawsList({
       {data && !loading && (
         <div className="mb-6 overflow-hidden rounded-lg border border-(--border)">
           <div className="grid grid-cols-2 gap-px bg-(--border) sm:grid-cols-4">
-            <Stat label="Draws" value={<CountUp value={totalRounds} />} caption="in this list" />
-            <Stat label="Paid out" value={<CountUp value={totalPaid} format={(n) => fmtSolHuman(n)} />} caption="total in SOL" />
-            <Stat label="Draw interval" value={fmtDuration(drawIntervalMs)} caption="median gap between draws" />
-            <Stat label="Latest draw" value={timeAgo(latestDrawTime)} caption={latestRound ? `draw #${latestRound.roundNumber}` : "no draws yet"} />
+            <Stat
+              label="Draws"
+              value={<CountUp value={totalRounds} />}
+              caption="settled rounds"
+            />
+            <Stat
+              label="Paid out"
+              value={<CountUp value={totalPaid} format={(n) => fmtSolNum(n)} />}
+              caption="SOL to winners"
+            />
+            <Stat
+              label="Draw interval"
+              value={fmtDuration(drawIntervalMs)}
+              caption="median gap between rounds"
+            />
+            <Stat
+              label="Latest draw"
+              value={timeAgo(latestDrawTime)}
+              caption={latestRound ? `draw #${latestRound.roundNumber}` : "no draws yet"}
+            />
+          </div>
+          <div className="border-t border-(--border) px-4 py-2 sm:px-5">
+            <p className="text-xs text-muted">
+              Showing up to 50 settled draws.
+            </p>
           </div>
         </div>
       )}
@@ -263,12 +303,14 @@ export default function DrawsList({
 
       {err && (
         <div className="py-12 text-center">
-          <p className="text-danger text-sm">Couldn’t load draws — {err}</p>
+          <p className="text-danger text-sm">
+            Couldn’t load the draw history. Check your connection and try again.
+          </p>
         </div>
       )}
       {data?.dbError && (
         <p className="text-danger text-sm py-4">
-          The draw history couldn’t be read — {data.dbError}
+          The draw history couldn’t be read right now. Please try again in a moment.
         </p>
       )}
 
@@ -328,7 +370,7 @@ export default function DrawsList({
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-sm text-muted">
-                Eligible wallets
+                Eligible holders
               </span>
               <span className="text-sm font-bold">{r.eligibleCount}</span>
             </div>
@@ -352,7 +394,9 @@ export default function DrawsList({
           </div>
 
           {r.error && (
-            <p className="text-danger text-sm mb-4">{r.error}</p>
+            <p className="text-danger text-sm mb-4" title={r.error}>
+              This draw finished with an error logged.
+            </p>
           )}
 
           {/* Randomness section */}
@@ -368,13 +412,13 @@ export default function DrawsList({
             />
           ) : (
             <p className="text-sm text-muted mb-5">
-              No randomness recorded — this draw stopped before the draw step.
+              No drand beacon was recorded for this draw.
             </p>
           )}
 
           {/* Winners — podium-styled list */}
           <div>
-            <p className="text-sm text-muted mb-2">Winners</p>
+            <p className="text-sm text-muted mb-2">Winners and payouts</p>
             {r.winners.length > 0 ? (
               <div className="flex flex-col">
                 {r.winners.map((w) => (

@@ -299,7 +299,7 @@ function DrawRow({
           <div className="border-t border-(--border) px-4 py-4 sm:px-5">
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
               <Cell label="Prize pool" value={fmtSolHuman(round.prizePoolSol)} />
-              <Cell label="Eligible wallets" value={round.eligibleCount.toLocaleString()} />
+              <Cell label="Eligible holders" value={round.eligibleCount.toLocaleString()} />
               <Cell label="Winners" value={String(ranked.length)} />
               <Cell label="Drawn" value={timeAgo(when)} title={fmtTime(when)} />
             </div>
@@ -317,7 +317,7 @@ function DrawRow({
                 full
               />
             ) : (
-              <p className="mt-4 text-xs text-muted">No randomness was drawn for this one.</p>
+              <p className="mt-4 text-xs text-muted">No drand beacon was recorded for this draw.</p>
             )}
 
             <div className="mt-4">

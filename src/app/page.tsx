@@ -494,11 +494,11 @@ export default function Home() {
             <div className="relative flex flex-col gap-5 p-4 sm:p-6">
               <div className="flex flex-col gap-2">
                 <h1 className="max-w-3xl text-balance text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-                  Hold {tokenName}. <span className="text-accent">Win the draw.</span>
+                  Hold {tokenName}. <span className="text-accent">Win the pool.</span>
                 </h1>
                 <Typography type="body-sm" color="muted" className="max-w-2xl text-pretty">
-                  Hold {minRule} and you’re in. Creator fees become the prize pool, split in SOL
-                  between {winnerCount} wallets picked at random with drand — verifiable by anyone.
+                  100% of creator fees go into the pool. Hold {minRule} and you’re in. Each
+                  round, {winnerCount} holders are drawn at random and paid in SOL.
                 </Typography>
               </div>
 
@@ -508,7 +508,7 @@ export default function Home() {
                   <Icon name="arrow-right" className="h-4 w-4" />
                 </Link>
                 <a href="#how" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-(--border) px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-default/40">
-                  How it works
+                  How draws work
                 </a>
               </div>
             </div>
@@ -575,7 +575,7 @@ export default function Home() {
                     )}
                   </div>
                   <p className="max-w-sm text-sm text-muted">
-                    Funded by creator fees, paid out in SOL to {winnerCount} randomly drawn wallets.
+                    Funded by creator fees and paid in SOL to {winnerCount} holders drawn at random.
                   </p>
                 </div>
                 <PoolArt className="hidden h-24 w-24 shrink-0 sm:block" />
@@ -595,7 +595,7 @@ export default function Home() {
                       {splitLabel ? (
                         <span
                           className="text-xs text-muted"
-                          title="Share of the pool each winner gets, by rank."
+                          title="Share of the net pool each winner gets, by rank."
                         >
                           {splitLabel}
                         </span>
@@ -713,7 +713,7 @@ export default function Home() {
             <div className="relative flex flex-col overflow-hidden rounded-lg border border-(--border) bg-surface p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted">
-                  Eligible wallets
+                  Eligible holders
                 </span>
                 {loading ? (
                   <Skeleton className="h-[22px] w-24 rounded-full" />
@@ -736,7 +736,7 @@ export default function Home() {
                 ) : (
                   <span className="text-xs text-muted">
                     {eligibleHolders > 0
-                      ? "wallets entered"
+                      ? "holders qualify"
                       : "No wallet meets the minimum yet"}
                   </span>
                 )}
@@ -821,8 +821,8 @@ export default function Home() {
                 collapsed row already carries #N, the pool, the age and the
                 winner avatars, so this line only explains the affordance. */}
             <Typography type="body-sm" color="muted">
-              Each draw, from the Pump.fun fee to the wallets it paid. Open one
-              to see the receipts.
+              Each row follows one draw from the Pump.fun creator fee to the wallets
+              that got paid. Open one to see the receipts.
             </Typography>
           </div>
 
@@ -841,8 +841,8 @@ export default function Home() {
             <Typography type="h4">How a draw works</Typography>
             <Typography type="body-sm" color="muted" className="max-w-2xl">
               We snapshot every wallet holding {minRule}, draw {winnerCount} winners with a
-              drand-seeded shuffle, and pay them in SOL. Anyone can re-run it in the browser and check
-              the result.
+              drand-seeded shuffle, and pay them in SOL. Anyone can re-run the draw in the browser to
+              check the result.
             </Typography>
           </div>
 
@@ -850,6 +850,7 @@ export default function Home() {
             winners={lastRound?.winners ?? []}
             network={network}
             chainName={chain?.name}
+            payoutDistribution={prize?.payoutDistribution}
           />
 
           <div className="flex max-w-2xl gap-2.5">
@@ -865,8 +866,8 @@ export default function Home() {
               </p>
               <p className="mt-1 text-xs leading-relaxed text-muted">
                 The animation shows how a draw works. It doesn’t show live odds. {tokenName} is a
-                lottery token, not an investment. Its price is set by the Pump.fun market, prizes are
-                paid only from the creator-fee pool, and you can lose money holding it.
+                lottery token, not an investment. Its price is set by the Pump.fun market. Prizes come
+                only from the creator-fee pool, and you can lose money holding it.
               </p>
               <Link
                 href="/how-it-works"

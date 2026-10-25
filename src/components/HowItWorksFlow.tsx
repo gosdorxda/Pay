@@ -241,12 +241,12 @@ function FeeCharge({ active }: { active: boolean }) {
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
-          className="inline-block size-1.5 shrink-0 rounded-full bg-emerald-500"
+          className="inline-block size-1.5 shrink-0 rounded-full bg-success"
           animate={{ opacity: i <= tick ? 1 : 0.3, scale: i === tick ? 1.35 : 1 }}
           transition={{ duration: 0.12 }}
         />
       ))}
-      <span className="ml-1 truncate text-xs font-medium text-emerald-500">Collecting...</span>
+      <span className="ml-1 truncate text-xs font-medium text-success">Collecting...</span>
     </span>
   );
 }
@@ -384,12 +384,6 @@ function Node({
   );
 }
 
-// Example prize split shown on the How-it-works flow (illustrative only).
-// The default PAYOUT_DISTRIBUTION is 0.5 / 0.3 / 0.2; on a 1 SOL example
-// pool that yields 0.50 / 0.30 / 0.20 SOL for ranks 1 / 2 / 3. Kept at the
-// app-wide 4 decimals (see `SOL_DIGITS` in @/lib/format).
-const EXAMPLE_PAYOUTS_SOL = ["0.5000 SOL", "0.3000 SOL", "0.2000 SOL"];
-
 function rankBadgeClass(rank: number): string {
   if (rank === 1) return "bg-amber-100 text-amber-900 ring-1 ring-amber-200";
   if (rank === 2) return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
@@ -401,20 +395,33 @@ function rankBadgeClass(rank: number): string {
 // order, alignment and height match exactly (it used to be a shorter card with a
 // HeroUI Avatar and a 10 px bold badge, which read as a different font). The
 // `dense` variant is only for the phone's 3-across row and scales the same tile
-// down; it does not change the shape. The rank is the badge slot; the SOL share
-// arrives as the subtitle when the travelling dots land.
+// down; it does not change the shape. The rank is the badge slot; the rank's cut
+// of the net pool arrives as the subtitle when the travelling dots land.
+//
+// The cut comes from PAYOUT_DISTRIBUTION (via /api/status), never hardcoded, so
+// changing the split - or the platform fee that is taken before it - can't leave
+// the card quoting a number the engine no longer pays. It is a percentage rather
+// than a SOL figure on purpose: this is an explainer, and a made-up amount next
+// to a real pool reads as a promise.
 function WinnerCard({
   index,
   reveal,
+  share,
   dense = false,
 }: {
   index: number;
   reveal: boolean;
+  /** The rank's share of the net pool, e.g. 0.5 for 50%. Absent when unknown. */
+  share?: number;
   /** Phone 3-across row: three winners side by side, one column each. */
   dense?: boolean;
 }) {
   const rank = index + 1;
-  const amount = EXAMPLE_PAYOUTS_SOL[index] ?? "0.0000 SOL";
+  const pct = typeof share === "number" ? Math.round(share * 100) : null;
+  // "50% of net pool" fits the desktop tile; the phone's ~92 px column only has
+  // room for "50%".
+  const shareLabel =
+    pct === null ? "paid in SOL" : dense ? `${pct}%` : `${pct}% of net pool`;
   return (
     <div className="relative">
       <Node
@@ -434,7 +441,7 @@ function WinnerCard({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
             >
-              {amount}
+              {shareLabel}
             </motion.span>
           ) : (
             <span
@@ -444,7 +451,7 @@ function WinnerCard({
                   : "block truncate text-xs text-muted"
               }
             >
-              Awaiting payout
+              Awaiting draw
             </span>
           )
         }
@@ -462,10 +469,13 @@ export default function HowItWorksFlow({
   winners,
   network,
   chainName,
+  payoutDistribution,
 }: {
   winners: Winner[];
   network: "mainnet" | "devnet";
   chainName?: string;
+  /** Next round's split from /api/status; absent while loading or unreadable. */
+  payoutDistribution?: number[];
 }) {
   const reduceMotion = useReducedMotion();
   const reduced = Boolean(reduceMotion);
@@ -493,7 +503,7 @@ export default function HowItWorksFlow({
       {/* ===================== Desktop ===================== */}
       <div
         className="relative hidden min-h-[390px] lg:block"
-        aria-label="Pump.fun creator fee flows through the Pay engine and drand to three winners"
+        aria-label="Pump.fun creator fee flows through the Pay engine and drand to the winners"
       >
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full"
@@ -527,8 +537,8 @@ export default function HowItWorksFlow({
             image={ART.pumpfun}
             title="Pump.fun trading"
             active={pumping}
-            subtitle={pumping ? <FeeCharge active /> : "1 SOL creator fee"}
-            badgeClassName="bg-emerald-500/10 text-emerald-500 ring-1 ring-inset ring-emerald-500/20"
+            subtitle={pumping ? <FeeCharge active /> : "creator fees"}
+            badgeClassName="bg-success/10 text-success ring-1 ring-inset ring-success/20"
           />
         </div>
 
@@ -556,20 +566,20 @@ export default function HowItWorksFlow({
 
         {/* Winners - same Node shape as the steps; payout arrives with the dots */}
         <div className="absolute left-[82.5%] top-[64px] w-[16.5%]">
-          <WinnerCard index={0} reveal={reveal} />
+          <WinnerCard index={0} reveal={reveal} share={payoutDistribution?.[0]} />
         </div>
         <div className="absolute left-[82.5%] top-[164px] w-[16.5%]">
-          <WinnerCard index={1} reveal={reveal} />
+          <WinnerCard index={1} reveal={reveal} share={payoutDistribution?.[1]} />
         </div>
         <div className="absolute left-[82.5%] top-[264px] w-[16.5%]">
-          <WinnerCard index={2} reveal={reveal} />
+          <WinnerCard index={2} reveal={reveal} share={payoutDistribution?.[2]} />
         </div>
       </div>
 
       {/* ===================== Mobile ===================== */}
       <div
         className="flex flex-col gap-2 lg:hidden"
-        aria-label="Pump.fun creator fee flows through the Pay engine and drand to three winners"
+        aria-label="Pump.fun creator fee flows through the Pay engine and drand to the winners"
       >
         {/* Phones keep the flow as a centred column of capped cards, but each
             card is left-aligned exactly like the desktop tile (badge left, copy
@@ -584,8 +594,8 @@ export default function HowItWorksFlow({
             image={ART.pumpfun}
             title="Pump.fun trading"
             active={pumping}
-            subtitle={pumping ? <FeeCharge active /> : "1 SOL creator fee"}
-            badgeClassName="bg-emerald-500/10 text-emerald-500 ring-1 ring-inset ring-emerald-500/20"
+            subtitle={pumping ? <FeeCharge active /> : "creator fees"}
+            badgeClassName="bg-success/10 text-success ring-1 ring-inset ring-success/20"
           />
         </div>
         <MobileWire active={walking1} t={walk1T} />
@@ -641,7 +651,7 @@ export default function HowItWorksFlow({
             title over subtitle, left-aligned, 60 px tall) at ~92 px per column. */}
         <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
           {[0, 1, 2].map((index) => (
-            <WinnerCard key={index} index={index} reveal={reveal} dense />
+            <WinnerCard key={index} index={index} reveal={reveal} share={payoutDistribution?.[index]} dense />
           ))}
         </div>
       </div>
