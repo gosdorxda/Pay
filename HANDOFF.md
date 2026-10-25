@@ -72,6 +72,12 @@ npm run dev                 # → http://localhost:3000
 
 **Jangan** jalankan `npm run db:push` / `db:migrate` kalau tetap memakai database Neon yang sekarang — itu DB berisi data asli (rounds, holders). `db:push` hanya untuk DB baru/kosong.
 
+Kalau memakai **DB Neon baru** (proyek kosong, mis. untuk VPS/lingkungan terpisah), urutannya:
+buat proyek di dashboard Neon → isi `.env` dengan string **pooled** (`-pooler`) + `?sslmode=require`
+→ dorong skema **sekali** dengan string **direct** (tanpa `-pooler`), karena DDL lewat pooler bisa
+menggantung → isi holder dengan `npm run holders:sync`. Detail lengkap + perintah verifikasi 8 tabel
+ada di **`DEPLOY-VPS.md` §6.1 jalur B**.
+
 Kalau `.env` tidak ikut tersalin, buat baru di root. Yang **wajib** (kalau kosong, `getConfig()` langsung throw `Missing required env var: ...`):
 
 | Key | Isi |
@@ -80,11 +86,11 @@ Kalau `.env` tidak ikut tersalin, buat baru di root. Yang **wajib** (kalau koson
 | `NEXT_PUBLIC_SOLANA_RPC_URL` | RPC untuk browser (wallet connect) |
 | `TOKEN_MINT` | mint PAY |
 | `PLATFORM_WALLET_SECRET` | secret key wallet platform (JSON array **atau** base58) |
-| `DATABASE_URL` | connection string Neon (pakai `?sslmode=require`) |
+| `DATABASE_URL` | connection string Neon **pooled** (`-pooler`, pakai `?sslmode=require`) |
 | `ADMIN_PASSWORD` | login `/admin` |
 | `ADMIN_SESSION_SECRET` | secret cookie admin |
 
-Yang punya default (boleh tidak diisi): `SOLANA_NETWORK` (`mainnet`), `TOKEN_DECIMALS` (`6`), `LOTTERY_CRON` (`0 * * * *`), `HOLDER_SYNC_CRON` (`*/5 * * * *`), `MIN_TOKEN_ELIGIBLE`, `PRIZE_RESERVE_LAMPORTS` (default 0.05 SOL), `WINNER_COUNT` (`3`), `PAYOUT_DISTRIBUTION` (`0.5,0.3,0.2`, harus berjumlah 1.0), `LOTTERY_CRON_ENABLED`, `PLATFORM_TREASURY_SECRET` (opsional), `ADMIN_USERNAME` (`admin`), `TOKEN_NAME` (ticker tampilan, default `PAY`, case apa adanya — `DrawFi` tetap `DrawFi`; nilai di database menang atas env).
+Yang punya default (boleh tidak diisi): `SOLANA_NETWORK` (`mainnet`), `TOKEN_DECIMALS` (`6`), `LOTTERY_CRON` (`0 * * * *`), `HOLDER_SYNC_CRON` (`*/5 * * * *`), `MIN_TOKEN_ELIGIBLE`, `PRIZE_RESERVE_LAMPORTS` (default 0.05 SOL), `WINNER_COUNT` (`3`), `PAYOUT_DISTRIBUTION` (`0.5,0.3,0.2`, harus berjumlah 1.0), `LOTTERY_CRON_ENABLED`, `PLATFORM_TREASURY_SECRET` (opsional), `ADMIN_USERNAME` (`admin`), `TOKEN_NAME` (ticker tampilan, default `PAY`, case apa adanya — `DrawFi` tetap `DrawFi`; nilai di database menang atas env), `TELEGRAM_BOT_TOKEN` (opsional — token bot grup; bisa juga diisi dari `/admin` → Telegram Bot, nilai DB menang).
 
 Nilai yang sekarang dipakai: **network mainnet**, `WINNER_COUNT=3`, `PAYOUT_DISTRIBUTION=0.5,0.3,0.2`, `LOTTERY_CRON_ENABLED=false`.
 

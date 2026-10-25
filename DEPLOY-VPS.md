@@ -14,7 +14,7 @@
 | Runtime | Node.js **22 LTS** | Next 16 menolak Node < 20.9; 22 LTS paling stabil untuk server |
 | Proses | **systemd** (`pay.service`) | restart otomatis saat boot/crash, log ke journald, tanpa dependency global |
 | Web server | **nginx** reverse proxy + **certbot** | TLS gratis; app tetap listen di `127.0.0.1:3000` (tidak terbuka ke internet) |
-| Database | **Neon** (cloud, sudah ada) | proyek ini tidak butuh PostgreSQL lokal |
+| Database | **Neon** (cloud) — pakai proyek yang sudah ada, atau bikin baru (§6.1 jalur B) | proyek ini tidak butuh PostgreSQL lokal |
 | File state | `data/buyback.json` di dalam folder app | ditulis runtime oleh Admin → Buyback |
 | Scheduler | **di dalam proses Next** (`src/instrumentation.ts`) | **wajib satu instance saja** |
 | Zona waktu server | **UTC** | `node-cron` memakai TZ server, sedangkan UI menjanjikan jadwal UTC |
@@ -186,7 +186,7 @@ sudo chown pay:pay /var/www/pay/.env
 
 | Key | Contoh / catatan |
 |---|---|
-| `DATABASE_URL` | connection string Neon, sertakan `?sslmode=require` (opsional `&connect_timeout=15`) |
+| `DATABASE_URL` | connection string Neon **pooled** (host mengandung `-pooler`), sertakan `?sslmode=require` (opsional `&connect_timeout=15`). Untuk `prisma db push` pakai string **direct** — §6.1 jalur B |
 | `SOLANA_RPC_URL` | RPC server-side (Helius mainnet, `https://mainnet.helius-rpc.com/?api-key=…`) |
 | `NEXT_PUBLIC_SOLANA_RPC_URL` | RPC untuk browser/wallet — **di-inline saat build**, lihat §5.3 |
 | `TOKEN_MINT` | mint PAY |
@@ -219,15 +219,20 @@ sudo chown pay:pay /var/www/pay/.env
 | `CLAIM_MIN_WALLET_SOL` | `0.001` | saldo minimum wallet untuk biaya klaim |
 | `CLAIM_PRIORITY_FEE_SOL` | `0.0009` | priority fee klaim |
 | `NET_PREFER_IPV4` | tidak diisi | default aktif: `ipv4first` + auto-select dimatikan (§13.3); `0` = perilaku bawaan Node |
+| `TELEGRAM_BOT_TOKEN` | kosong | **opsional** — token bot grup dari @BotFather. Boleh juga diisi dari `/admin` → Telegram Bot; nilai di database menang atas env. Bukan `NEXT_PUBLIC_*`, jadi cukup restart (tanpa rebuild) |
 
-Nama lengkap key yang dibaca app (29): `SOLANA_NETWORK`, `HELIUS_API_KEY`, `SOLANA_RPC_URL`,
+Nama lengkap key yang dibaca app (30): `SOLANA_NETWORK`, `HELIUS_API_KEY`, `SOLANA_RPC_URL`,
 `NEXT_PUBLIC_SOLANA_RPC_URL`, `DATABASE_URL`, `TOKEN_MINT`, `TOKEN_DECIMALS`,
 `PLATFORM_WALLET_SECRET`, `PLATFORM_TREASURY_SECRET`, `LOTTERY_CRON`, `HOLDER_SYNC_CRON`,
 `MIN_TOKEN_ELIGIBLE`, `PRIZE_RESERVE_LAMPORTS`, `WINNER_COUNT`, `PAYOUT_DISTRIBUTION`,
 `PLATFORM_FEE_BPS`, `MAX_PRIZE_SOL`, `MIN_PRIZE_SOL`, `LOTTERY_CRON_ENABLED`,
 `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `PUMPFUN_API_BASE`, `CLAIM_CRON`,
 `CLAIM_AUTO_ENABLED`, `CLAIM_MIN_SOL`, `CLAIM_MIN_WALLET_SOL`, `CLAIM_PRIORITY_FEE_SOL`,
-`NET_PREFER_IPV4`.
+`NET_PREFER_IPV4`, `TELEGRAM_BOT_TOKEN`.
+
+`TELEGRAM_BOT_TOKEN` dibaca `src/lib/telegram-bot.ts`, bukan `getConfig()` — jadi bot boleh
+tetap mati tanpa mengganggu boot. Konfigurasi bot selebihnya (chat id, interval, toggle)
+disimpan di tabel `AdminSetting`, bukan di `.env`.
 
 Ticker tampilan dibaca terpisah oleh `src/lib/seo.ts` (bukan `getConfig()`): `TOKEN_NAME`
 opsional, default `PAY`, dan baris `TOKEN_NAME` di tabel `AdminSetting` selalu menang —
@@ -298,25 +303,96 @@ sudo -u pay npm ci --include=dev
 
 ### 6.1 Database
 
-DB Neon yang sekarang **sudah berisi data asli** (rounds, holders, claims).
+Ada **dua jalur** — pilih satu, jangan campur:
+
+| Situasi | Perintah DB yang dijalankan |
+|---|---|
+| **A. Pakai DB Neon yang sudah ada** (berisi rounds/holders/claims asli) | **tidak ada**. Cukup cek koneksi (snippet di akhir bagian ini), lalu lanjut §6.2 |
+| **B. DB Neon baru / kosong** | `npx prisma db push` **sekali**, lalu `npm run holders:sync` |
+
+Kalau tidak yakin DB-nya kosong atau berisi, cek dulu (read-only, tidak mengubah apa pun):
 
 ```bash
-# hanya untuk DB baru/kosong:
-sudo -u pay npx prisma db push
-
-# untuk DB Neon yang sudah ada: JANGAN dijalankan
+cd /var/www/pay
+sudo -u pay node -e "require('@next/env').loadEnvConfig(process.cwd());const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const t=await p.\$queryRawUnsafe('select tablename from pg_tables where schemaname=\$1 order by 1','public');console.log('tabel:',t.map(r=>r.tablename).join(', ')||'(kosong)');try{console.log('rounds:',await p.lotteryRound.count(),'| holders:',await p.holder.count())}catch{console.log('tabel utama belum ada → DB baru')}await p.\$disconnect()})().catch(e=>{console.error('db FAIL',e.message);process.exit(1)})"
 ```
+
+- `(kosong)` atau `tabel utama belum ada` → **jalur B**.
+- 8 tabel + angka rounds/holders → **jalur A**, **jangan** `db push`.
+
+#### A. DB Neon yang sudah ada
+
+Tidak ada perintah skema. Pastikan saja `.env` memakai connection string dari dashboard Neon
+(`?sslmode=require`) dan isinya bisa dibaca — jalankan snippet **Cek koneksi DB** di akhir §6.1.
+Database ini berisi data produksi; `db push` ke sini tidak diperlukan.
+
+#### B. DB Neon **baru** (proyek kosong) — langkah lengkap
+
+**1. Buat proyek.** Dashboard Neon → **New Project**. Region bebas (mis.
+`ap-southeast-1` Singapore untuk latensi terbaik dari Indonesia). Database default `neondb`
+boleh dipakai apa adanya.
+
+**2. Salin dua connection string.** Buka **Connect**:
+
+- **Pooled** — host mengandung `-pooler`
+  (mis. `ep-cool-name-123456-pooler.ap-southeast-1.aws.neon.tech`). Ini untuk `.env`.
+- **Direct** — host **tanpa** `-pooler`
+  (mis. `ep-cool-name-123456.ap-southeast-1.aws.neon.tech`). Ini **hanya** untuk `db push`,
+  karena DDL lewat pooler PgBouncer bisa menggantung.
+
+**3. Isi `.env`** (§5.1) dengan string **pooled** + `?sslmode=require`.
+
+**4. Dorong skema satu kali**, memakai string **direct** hanya di baris perintah — jangan
+ditulis ke `.env`, supaya app tetap memakai pooled:
+
+```bash
+cd /var/www/pay
+sudo -u pay env DATABASE_URL='postgresql://USER:[redacted]/neondb?sslmode=require' \
+  npx prisma db push
+```
+
+Akhir yang benar: `Your database is now in sync with your Prisma schema.` + `Done in …s`.
+Bila menggantung >±30 detik atau muncul `Timed out fetching a new connection`, berarti masih
+memakai host `-pooler` → ulangi dengan string direct. Bila Prisma menawarkan **reset**
+(`--force-reset`), jawab **No** — artinya `DATABASE_URL` menunjuk DB lain yang sudah berisi.
+
+**5. Verifikasi hasilnya** (8 tabel, semuanya masih 0 baris):
+
+```bash
+sudo -u pay node -e "require('@next/env').loadEnvConfig(process.cwd());const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const t=await p.\$queryRawUnsafe('select tablename from pg_tables where schemaname=\$1 order by 1','public');console.log(t.map(r=>r.tablename).join(', '));console.log('rounds:',await p.lotteryRound.count(),'| holders:',await p.holder.count());await p.\$disconnect()})().catch(e=>{console.error('db FAIL',e.message);process.exit(1)})"
+```
+
+Harapan: `AdminSetting, CreatorFeeClaim, ExcludedWallet, Holder, HolderSnapshot,
+LotteryRound, NotificationSubscription, Winner` lalu `rounds: 0 | holders: 0`.
+
+**6. Tidak ada seed dan tidak perlu insert manual.** Baris `AdminSetting` (palette, SEO, config
+Telegram bot, dll.) dibuat otomatis saat Anda klik **Save** di `/admin`. Round pertama dibuat
+cron `LOTTERY_CRON` atau `npm run lottery:run` **setelah** prize wallet berisi SOL.
+
+**7. Isi data holder** supaya angka *eligible* tidak 0. Cron `HOLDER_SYNC_CRON` (`*/5`) akan
+mengisinya sendiri setelah service hidup, atau paksa sekali:
+
+```bash
+sudo -u pay npm run holders:sync        # menulis HolderSnapshot (pakai kuota Helius)
+curl -s http://127.0.0.1:3000/api/status | head -c 300; echo
+```
+
+Pool tetap **0 SOL** dan draw berstatus `skipped` sampai wallet diisi — itu normal.
 
 Repo ini **tidak punya folder `prisma/migrations/`** — `db push` adalah cara menyamakan skema
-(additive, tidak menghapus baris) tapi tetap tidak perlu untuk DB yang sudah jalan. Kalau nanti
-butuh riwayat migrasi, mulai pakai `prisma migrate dev` di mesin dev dan deploy dengan
-`prisma migrate deploy`.
+(additive, tidak menghapus baris). Kalau nanti butuh riwayat migrasi, mulai pakai
+`prisma migrate dev` di mesin dev dan deploy dengan `prisma migrate deploy` (pakai string
+**direct**, alasannya sama dengan `db push`).
 
-Cek koneksi DB tanpa membocorkan isi:
+**Cek koneksi DB** (dipakai jalur A maupun B) — read-only, tanpa membocorkan isi:
 
 ```bash
-sudo -u pay node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.\$queryRaw\`select 1\`.then(()=>{console.log('db OK');return p.\$disconnect()}).catch(e=>{console.error('db FAIL',e.message);process.exit(1)})"
+cd /var/www/pay
+sudo -u pay node -e "require('@next/env').loadEnvConfig(process.cwd());const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.\$queryRaw\`select 1\`.then(()=>{console.log('db OK');return p.\$disconnect()}).catch(e=>{console.error('db FAIL',e.message);process.exit(1)})"
 ```
+
+Harapan `db OK`. `db FAIL` biasanya berarti `DATABASE_URL` salah, DB Neon suspend, atau
+`prisma generate` belum jalan (§6, §13.2).
 
 ### 6.2 Type-check baseline
 
@@ -604,6 +680,7 @@ done
 
 curl -s https://pay.contoh.com/api/status | head -c 300; echo
 curl -s -o /dev/null -w 'palette API tanpa login: %{http_code}\n' https://pay.contoh.com/api/admin/palette
+curl -s -o /dev/null -w 'telegram API tanpa login: %{http_code}\n' https://pay.contoh.com/api/admin/telegram
 ```
 
 Harapan:
@@ -613,6 +690,7 @@ Harapan:
 | 7 route di atas | **200** |
 | `/api/status` | JSON berisi pool/round/holders (bukan halaman error) |
 | `/api/admin/palette` tanpa cookie | **401** |
+| `/api/admin/telegram` tanpa cookie | **401** |
 | `http://` (non-TLS) | redirect 301 ke `https://` |
 | `sudo journalctl -u pay -n 30` | `Ready in`, tanpa `Missing required env var`, tanpa `did not initialize yet` |
 
@@ -625,6 +703,22 @@ Lalu uji manual di browser:
    **Reset** token itu, lalu **Reset all** supaya tidak ada override tertinggal.
 5. Admin → Buyback → simpan satu perubahan kecil, pastikan tidak muncul pesan
    "read-only deployment" (artinya `data/` writable).
+6. **Opsional — Admin → Telegram Bot** (bot notifikasi grup):
+   - Buat bot di **@BotFather** → `/newbot` → salin token.
+   - Tambahkan bot ke grup, lalu kirim satu pesan di grup (wajib, supaya bot "melihat" chat).
+   - Di panel: paste token → **Find chat id** → klik chat yang benar (mengisi `-100…`
+     otomatis; isi **Forum topic id** hanya kalau grup memakai Topics).
+   - Set **Round update interval** (default **2** menit), aktifkan **Bot enabled** +
+     **Round updates** + **Draw results** → **Save settings**.
+   - **Send test** harus muncul di grup. Kalau `Unauthorized` → token salah; `chat not found` →
+     bot belum di grup / chat id salah; `not enough rights` → jadikan bot admin grup.
+   - Setelah itu: **Post round now** (kirim kondisi round saat ini), lalu **Resend last draw**.
+   - Tidak perlu rebuild: cron bot didaftarkan saat service start dan mengecek konfigurasi DB
+     tiap menit, jadi perubahan interval berlaku di tick berikutnya tanpa restart.
+   - Link di pesan memakai **Site URL** dari Admin → SEO & Analytics; kalau kosong, pesan
+     terkirim tanpa link.
+   - Token boleh diisi lewat `.env` (`TELEGRAM_BOT_TOKEN`) sebagai ganti panel; nilai di
+     database menang atas env.
 
 Angka acuan saat serah-terima (23–24 Okt 2026): `holders ≈ 509`, `lastRound.roundNumber = 46`
 (status `skipped`), pool **0 SOL** → semua draw `skipped` itu **normal**, bukan bug.
@@ -646,7 +740,11 @@ sudo systemctl start pay
 sudo systemctl status pay --no-pager
 ```
 
-- `npx prisma db push` **hanya** kalau `prisma/schema.prisma` berubah.
+- `npx prisma db push` **hanya** kalau `prisma/schema.prisma` berubah (pakai string **direct**,
+  §6.1 jalur B). Fitur yang menyimpan konfigurasi di tabel `AdminSetting` — palette, SEO,
+  Buyback, **Telegram bot** — tidak menambah tabel, jadi cukup `git pull` + build + restart.
+- Perubahan kode cron/tick (`src/lib/scheduler.ts`, mis. bot Telegram) baru aktif setelah
+  **build ulang + restart** (§11). `systemctl restart` saja akan menjalankan build lama.
 - `.env` berubah → cukup `sudo systemctl restart pay`, **kecuali** `NEXT_PUBLIC_*` → perlu
   build ulang (§5.3).
 - Rollback cepat: sebelum build, `sudo -u pay cp -a .next .next.prev`; kalau gagal →
@@ -745,6 +843,14 @@ itu normal. Pastikan SSL/TLS mode **Full (strict)** dan origin punya sertifikat 
 | Wallet connect gagal di browser | `NEXT_PUBLIC_SOLANA_RPC_URL` salah | perbaiki `.env` lalu **build ulang** |
 | `ERR_TLS_CERT_ALTNAME_INVALID` ke Neon | host pooler di URL salah | pakai connection string persis dari dashboard Neon |
 | Lambat sesaat setelah restart | Neon cold start + Prisma warm-up | normal; request kedua sudah cepat |
+| `prisma db push` ke DB baru menggantung / `Timed out fetching a new connection` | memakai host **pooler** (`-pooler`) untuk DDL | jalankan ulang dengan connection string **direct** (§6.1 jalur B) |
+| `P1001: Can't reach database server` | host salah, DB Neon dihapus/suspend, atau egress 443 tertutup | salin ulang string dari dashboard Neon; cek `sudo ufw status` (§13.4) |
+| DB baru: eligible/holders **0** dan draw selalu `skipped` | belum ada `HolderSnapshot` dan prize wallet kosong | `sudo -u pay npm run holders:sync`, isi wallet, tunggu tick berikutnya |
+| Telegram: `Telegram: Unauthorized` | token bot salah / sudah di-revoke | `/revoke` + token baru di @BotFather, paste ulang di panel |
+| Telegram: `chat not found` | bot belum jadi anggota grup, atau chat id salah format | tambahkan bot ke grup, kirim 1 pesan, lalu **Find chat id** |
+| Telegram: `not enough rights…` / `Forbidden` | bot dibatasi di grup (grup memakai izin kirim khusus) | jadikan bot admin grup, atau izinkan member mengirim pesan |
+| Round update tidak pernah muncul, panel "Paused" | `enabled` / `notifyRound` mati, atau chat id kosong | aktifkan kedua toggle + simpan chat id |
+| Bot tidak posting setelah deploy | service baru start sebelum konfigurasi disimpan | simpan di panel (tick berikutnya mengirim), atau klik **Post round now** |
 
 Log yang berguna:
 
@@ -1006,6 +1112,7 @@ done
 - [ ] `timedatectl` = **UTC**
 - [ ] Node **≥ 20.9** (disarankan 22 LTS), `npm ci` sukses
 - [ ] `npx prisma generate` dijalankan **di VPS**
+- [ ] DB diputuskan: **jalur A** (DB lama, tanpa `db push`) atau **jalur B** (DB baru: `db push` dengan string **direct** + `npm run holders:sync`) — §6.1
 - [ ] `.env` lengkap, `chmod 600`, milik `pay`
 - [ ] `LOTTERY_CRON` sudah diputuskan (§5.4 — production selalu mengaktifkan draw)
 - [ ] `npm run build` sukses, `npx tsc --noEmit` 0 error
@@ -1018,6 +1125,7 @@ done
 - [ ] `/api/status` 200 JSON, `/api/admin/palette` 401 tanpa login
 - [ ] login `/admin` berhasil, tab **Palette** save + reset berfungsi
 - [ ] `data/` writable (uji simpan Buyback)
+- [ ] (opsional) bot Telegram: token + chat id tersimpan, **Send test** masuk ke grup, interval sesuai (default **2** menit) — §10 langkah 6
 - [ ] backup `data/buyback.json` + salinan `.env` di luar server
 - [ ] `ADMIN_PASSWORD` & `ADMIN_SESSION_SECRET` baru, bukan nilai dev
 
