@@ -147,6 +147,7 @@ export default function StatsPage() {
     const maxDraws = Math.max(1, ...daily.map((d) => d.draws));
     const windowDraws = daily.reduce((a, d) => a + d.completed, 0);
     const windowPrize = daily.reduce((a, d) => a + d.prizeSol, 0);
+    const windowFee = daily.reduce((a, d) => a + d.feeSol, 0);
     const windowBad = daily.reduce((a, d) => a + d.skipped + d.failed, 0);
 
     // Line geometry lives in a 0-100 space stretched over the plot box, so the
@@ -186,6 +187,7 @@ export default function StatsPage() {
       maxDraws,
       windowDraws,
       windowPrize,
+      windowFee,
       windowBad,
     };
   }, [data]);
@@ -197,37 +199,33 @@ export default function StatsPage() {
     <AppShell title="Stats">
       <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12 flex flex-col gap-6">
         <div className="max-w-3xl">
-          <Typography type="h4">The lottery in numbers</Typography>
+          <Typography type="h4">Draw statistics</Typography>
           <Typography type="body-sm" color="muted" className="mt-1.5">
-            Every draw since launch, added up: how much SOL reached winners, how many wallets
-            qualified, and who has won the most. Totals are all-time; the chart covers the last{" "}
+            Every completed draw, added up: how much SOL reached winners, how many wallets were
+            eligible, and who has won the most. Totals are all time. The chart covers the last{" "}
             {windowDays} days.
           </Typography>
         </div>
 
         {error && (
-          <div
-            className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger"
-            title={error}
-          >
-            Couldn’t load the draw history. Refresh the page to try again.
+          <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+            Couldn’t load these numbers. Refresh the page to try again.
           </div>
         )}
         {data?.dbError && (
-          <div
-            className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger"
-            title={data.dbError}
-          >
-            The draw history is temporarily unavailable. Refresh in a moment.
+          <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+            These numbers are temporarily unavailable. Refresh in a moment.
           </div>
         )}
 
         {loading ? (
           <StatsSkeleton />
         ) : !t || t.draws === 0 ? (
-          <p className="text-sm text-muted">
-            No draw has finished yet. These numbers fill in once the first draw runs.
-          </p>
+          error || data?.dbError ? null : (
+            <p className="text-sm text-muted">
+              No draw has finished yet. These numbers appear once the first one does.
+            </p>
+          )
         ) : (
           <>
             <Tiles totals={t} />
@@ -240,15 +238,17 @@ export default function StatsPage() {
                   </h2>
                   <p className="mt-0.5 text-xs text-muted">
                     {metric === "prize" &&
-                      `${fmtSolHuman(view.windowPrize)} across ${view.windowDraws} ${
-                        view.windowDraws === 1 ? "draw" : "draws"
-                      }`}
+                      (view.windowDraws > 0
+                        ? `${fmtSolHuman(view.windowPrize)} pooled across ${view.windowDraws} ${
+                            view.windowDraws === 1 ? "draw" : "draws"
+                          }`
+                        : "No draw finished in this window")}
                     {metric === "eligible" &&
                       (view.hasSnapshots
-                        ? `Eligible wallets from holder snapshots · latest ${lastValue(
+                        ? `Eligible wallets from holder snapshots, latest ${lastValue(
                             view.eligibleValues
                           )}`
-                        : "Eligible wallets at draw time (holder snapshots unavailable)")}
+                        : "Eligible wallets at draw time, no holder snapshots yet")}
                     {metric === "outcomes" &&
                       `${view.windowDraws} completed · ${view.windowBad} skipped or failed`}
                   </p>
@@ -402,7 +402,7 @@ export default function StatsPage() {
 
                 <ChartLegend
                   metric={metric}
-                  feeSol={t.platformFeesSol}
+                  feeSol={view.windowFee}
                   snapshot={view.hasSnapshots}
                 />
               </div>
@@ -454,7 +454,7 @@ function Segmented({
   onChange: (m: Metric) => void;
 }) {
   const items: { id: Metric; label: string }[] = [
-    { id: "prize", label: "Prize paid" },
+    { id: "prize", label: "Prize pool" },
     { id: "eligible", label: "Eligible wallets" },
     { id: "outcomes", label: "Outcomes" },
   ];
@@ -622,20 +622,11 @@ function ChartLegend({
         <>
           <LegendDot className="bg-accent" label="To winners" />
           {feeSol > 0 && (
-            <LegendDot className="bg-warning" label={`Platform fee ${fmtSolHuman(feeSol)} total`} />
+            <LegendDot className="bg-warning" label={`Platform fee ${fmtSolHuman(feeSol)}`} />
           )}
         </>
       )}
-      {metric === "eligible" && (
-        <>
-          <LegendDot className="bg-accent" label="Eligible wallets" />
-          <span>
-            {snapshot
-              ? "one point per day, from that day's most complete holder snapshot"
-              : "peak eligible count on days a draw completed"}
-          </span>
-        </>
-      )}
+      {metric === "eligible" && <LegendDot className="bg-accent" label="Eligible wallets" />}
       {metric === "outcomes" && (
         <>
           <LegendDot className="bg-success" label="Completed" />
@@ -645,11 +636,13 @@ function ChartLegend({
       )}
       <span className="sm:ml-auto">
         {metric === "prize" &&
-          "One bar per day — same-day draws are added together. No bar = nothing finished that day."}
+          "Each bar is one day's prize pool: what went to winners plus any platform fee. No bar means no draw finished that day."}
         {metric === "eligible" &&
-          "Filled area = eligible wallets per day, from each day's most complete holder snapshot."}
+          (snapshot
+            ? "One point per day, from that day's most complete holder snapshot. Days without a snapshot carry the last count forward."
+            : "Peak eligible count on days a draw completed.")}
         {metric === "outcomes" &&
-          "Bar height is draws that day; segments split completed / skipped / failed."}
+          "Bar height is draws that day; segments split completed, skipped and failed."}
       </span>
     </div>
   );
@@ -687,9 +680,9 @@ function Tiles({ totals }: { totals: NonNullable<Stats["totals"]> }) {
       )} payouts sent`,
     },
     {
-      label: "Biggest prize",
+      label: "Biggest pool",
       value: fmtSolHuman(totals.biggestPrize),
-      caption: `avg ${fmtSolHuman(totals.avgPrize)} per draw`,
+      caption: `average ${fmtSolHuman(totals.avgPrize)} per draw`,
     },
     {
       label: "Eligible wallets",
@@ -816,7 +809,7 @@ function StatsSkeleton() {
     <>
       <div className="rounded-lg border border-(--border) bg-(--border) overflow-hidden">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-px">
-          {["Draws", "Paid out", "Biggest prize", "Eligible wallets"].map((l) => (
+          {["Draws", "Paid out", "Biggest pool", "Eligible wallets"].map((l) => (
             <StatSkeleton key={l} label={l} />
           ))}
         </div>

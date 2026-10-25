@@ -59,6 +59,23 @@ function fmtDate(iso: string | null): string {
   }
 }
 
+/** A skip has several causes (no eligible wallets, empty pool, pool below the
+ *  minimum). Turn the stored reason into a sentence instead of printing the
+ *  raw string, which carries driver-level wording. */
+function skipReason(error: string | null): string {
+  const reason = (error ?? "").toLowerCase();
+  if (reason.includes("eligible")) {
+    return "No wallet met the holding requirement, so this draw picked no winners.";
+  }
+  if (reason.includes("below minimum")) {
+    return "The prize pool was below the minimum for a draw, so this draw picked no winners.";
+  }
+  if (reason.includes("reserve") || reason.includes("0 sol")) {
+    return "The prize pool was empty, so this draw picked no winners.";
+  }
+  return "This draw was skipped, so no winners were picked.";
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const h = hex.toLowerCase().replace(/^0x/, "");
   const out = new Uint8Array(h.length / 2);
@@ -90,7 +107,11 @@ const STATUS_LABEL: Record<string, string> = {
   skipped: "Skipped",
   failed: "Failed",
   drawing: "In progress",
+  pending: "Pending",
 };
+
+const statusLabel = (status: string): string =>
+  STATUS_LABEL[status] ?? status.charAt(0).toUpperCase() + status.slice(1);
 export default function VerifyPage() {
   const [data, setData] = useState<RoundsResp | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,9 +178,12 @@ export default function VerifyPage() {
           });
         }
       })
-      .catch((e) => {
+      .catch(() => {
         if (!alive) return;
-        setShaResult({ state: "error", detail: (e as Error).message });
+        setShaResult({
+          state: "error",
+          detail: "The SHA-256 check couldn't run in this browser. Open this page over HTTPS in a current browser.",
+        });
       });
 
     // Check 2 — external: fetch the same round from the drand public beacon
@@ -175,25 +199,41 @@ export default function VerifyPage() {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((j: { randomness?: string; signature?: string }) => {
+      .then((j: { randomness?: string; signature?: string; round?: number }) => {
         if (!alive) return;
         const gotRnd = (j.randomness ?? "").toLowerCase();
         const gotSig = (j.signature ?? "").toLowerCase();
-        if (gotRnd && gotRnd === value.toLowerCase() && gotSig === sig.toLowerCase()) {
+        const randMatch = gotRnd !== "" && gotRnd === value.toLowerCase();
+        const sigMatch = gotSig !== "" && gotSig === sig.toLowerCase();
+        const roundMatch = j.round == null || j.round === current.randomnessRound;
+        if (randMatch && sigMatch && roundMatch) {
           setBeaconResult({
             state: "pass",
-            detail: `drand.sh published the same randomness + signature for beacon round ${current.randomnessRound}`,
+            detail: `drand.sh published the same randomness and signature for beacon round ${current.randomnessRound}`,
           });
         } else {
+          const diff: string[] = [];
+          if (!roundMatch) {
+            diff.push(`round ${j.round} ≠ ${current.randomnessRound}`);
+          }
+          if (!randMatch) {
+            diff.push(`randomness ${gotRnd.slice(0, 16) || "(empty)"} ≠ ${value.slice(0, 16)}`);
+          }
+          if (!sigMatch) {
+            diff.push(`signature ${gotSig.slice(0, 16) || "(empty)"} ≠ ${sig.slice(0, 16)}`);
+          }
           setBeaconResult({
             state: "fail",
-            detail: `drand.sh returned randomness ${gotRnd.slice(0, 16) || "(empty)"} ≠ our stored value`,
+            detail: `drand.sh disagrees with the saved values: ${diff.join("; ")}`,
           });
         }
       })
-      .catch((e) => {
+      .catch(() => {
         if (!alive) return;
-        setBeaconResult({ state: "error", detail: (e as Error).message });
+        setBeaconResult({
+          state: "error",
+          detail: "Couldn't reach drand.sh from this browser. Check the connection and refresh.",
+        });
       });
 
     return () => {
@@ -213,20 +253,21 @@ export default function VerifyPage() {
           <header>
             <Typography type="h4">Check a draw yourself</Typography>
             <Typography type="body-sm" color="muted" className="mt-1.5">
-              Every draw starts with a random number that drand publishes — a public beacon run by
-              independent organisations, not by us. Pick a draw and this page checks two things in
-              your own browser: the number we used is the number drand published, and that number
-              really produces the winners listed. Nothing has to be taken on trust.
+              Draws start with a random number that drand publishes: a public beacon run by
+              independent organisations, not by us. Pick a draw and your browser checks three
+              things: the saved number is the hash of its signature, drand published that same
+              number, and the shuffle shown here reproduces the winners listed. Skipped draws stop
+              before the beacon, so there is nothing to check for them.
             </Typography>
           </header>
 
           {fetchError && (
-            <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger" title={fetchError}>
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
               Couldn’t load the draws. Refresh the page to try again.
             </div>
           )}
           {data?.dbError && (
-            <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger" title={data.dbError}>
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
               The draw history is temporarily unavailable. Refresh in a moment.
             </div>
           )}
@@ -313,7 +354,7 @@ export default function VerifyPage() {
                   <RoundStatusChip status={current.status} />
                 </div>
                 <dl className="flex flex-col gap-3 text-sm">
-                  <Field label="Randomness round" value={current.randomnessRound != null ? String(current.randomnessRound) : "—"} mono />
+                  <Field label="Beacon round" value={current.randomnessRound != null ? String(current.randomnessRound) : "—"} mono />
                   <Field label="Finished" value={fmtDate(current.completedAt)} />
                   <Field label="Eligible wallets" value={String(current.eligibleCount)} mono />
                   <Field label="Prize pool" value={fmtSolHuman(current.prizePoolSol)} mono />
@@ -322,8 +363,8 @@ export default function VerifyPage() {
                       label="Note"
                       value={
                         current.status === "skipped"
-                          ? "The prize pool was empty, so this draw picked no winners."
-                          : current.error
+                          ? skipReason(current.error)
+                          : "This draw stopped before it finished."
                       }
                     />
                   )}
@@ -334,37 +375,47 @@ export default function VerifyPage() {
                 <SeedToWinner round={current} network={data?.network ?? "mainnet"} />
               )}
 
-              <div className="rounded-lg border border-(--border) bg-surface p-6 flex flex-col gap-5">
-                <div className="flex flex-col gap-1">
-                  <Typography type="h5">Two checks, both in your browser</Typography>
+              {current.randomnessValue ? (
+                <div className="rounded-lg border border-(--border) bg-surface p-6 flex flex-col gap-5">
+                  <div className="flex flex-col gap-1">
+                    <Typography type="h5">Two checks on the saved number</Typography>
+                    <p className="text-sm text-muted">
+                      When both checks pass, the saved random number is the one drand published.
+                      The winners are checked separately, by re-running the shuffle above.
+                    </p>
+                  </div>
+                  <CheckRow
+                    title="The saved number is the hash of its signature"
+                    hint="Local check: the number we saved must be the SHA-256 hash of the signature we saved. An edited value fails here."
+                    result={shaResult}
+                    color={checkColor}
+                    label={checkLabel}
+                  />
+                  <CheckRow
+                    title="drand published the same number"
+                    hint="External check: fetches that beacon round from drand.sh and compares it with what we stored."
+                    result={beaconResult}
+                    color={checkColor}
+                    label={checkLabel}
+                  />
+                  {current.randomnessRound != null && chain && (
+                    <ExternalLink
+                      href={`${chain.verifyBaseUrl}/${current.randomnessRound}`}
+                      className="self-start text-sm"
+                    >
+                      See that round on drand.sh
+                    </ExternalLink>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-(--border) bg-surface p-6 flex flex-col gap-2">
+                  <Typography type="h5">Nothing to check for this draw</Typography>
                   <p className="text-sm text-muted">
-                    If both say match, the draw used the random number drand published and nobody
-                    edited the result afterwards.
+                    This draw stopped before it requested a random number, so there is no beacon
+                    round or winner shuffle to compare. Skipped and failed draws can land here.
                   </p>
                 </div>
-                <CheckRow
-                  title="The stored number belongs to its signature"
-                  hint="Local check — the number we saved must be the SHA-256 hash of the signature we saved. An edited value fails here."
-                  result={shaResult}
-                  color={checkColor}
-                  label={checkLabel}
-                />
-                <CheckRow
-                  title="drand published the same number"
-                  hint="External check — fetches that beacon round straight from drand.sh and compares it with what we stored."
-                  result={beaconResult}
-                  color={checkColor}
-                  label={checkLabel}
-                />
-                {current.randomnessRound != null && chain && (
-                  <ExternalLink
-                    href={`${chain.verifyBaseUrl}/${current.randomnessRound}`}
-                    className="self-start text-sm"
-                  >
-                    See that round on drand.sh
-                  </ExternalLink>
-                )}
-              </div>
+              )}
 
               <div className="rounded-lg border border-(--border) bg-surface p-6 flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
@@ -381,10 +432,10 @@ export default function VerifyPage() {
 
           {chain && (
             <div className="rounded-lg border border-(--border) bg-surface p-6 flex flex-col gap-4">
-              <Typography type="h5">The beacon behind every draw</Typography>
+              <Typography type="h5">The drand beacon</Typography>
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <Field label="Beacon chain" value={chain.name} mono />
-                <Field label="Signature type" value={chain.scheme} mono />
+                <Field label="Signature scheme" value={chain.scheme} mono />
                 <Field label="New number every" value={`${chain.period}s`} mono />
                 <Field label="Live since" value="2023-08-23" mono />
               </dl>
@@ -404,7 +455,7 @@ export default function VerifyPage() {
               <div className="px-5 py-4 border-b border-(--border) bg-surface">
                 <Typography type="h5">Where the random number comes from</Typography>
                 <p className="mt-1 text-sm text-muted leading-relaxed">
-                  Nobody — not even the team — picks the number. Here is the chain,
+                  Nobody, not even the team, picks the number. Here is the chain,
                   from the beacon to the winners.
                 </p>
               </div>
@@ -431,7 +482,7 @@ export default function VerifyPage() {
                       <span className="font-mono text-foreground">
                         {chain.period}s
                       </span>
-                      . Each one is signed, so anyone can check it is genuine — and no
+                      . Each one is signed, so anyone can check it is genuine, and no
                       single party can predict or bend the result.
                     </p>
                   </div>
@@ -444,8 +495,8 @@ export default function VerifyPage() {
                   <div className="flex flex-col gap-1 min-w-0">
                     <p className="text-sm font-semibold">The draw saves that number</p>
                     <p className="text-sm text-muted leading-relaxed">
-                      When a draw runs, it takes the newest published number — a long
-                      hex string — and stores it with the draw for good. That number is
+                      When a draw runs, it takes the newest published number, a long
+                      hex string, and stores it with the draw for good. That number is
                       the seed: everything else follows from it. You can see the exact
                       value and which drand round it came from, right on this page.
                     </p>
@@ -463,7 +514,7 @@ export default function VerifyPage() {
                       cards (the Fisher–Yates shuffle). The first{" "}
                       <span className="font-mono text-foreground">N</span> wallets after
                       the shuffle are the winners, in rank order. Same seed and same
-                      wallets always give the same winners — run it a thousand times and
+                      wallets always give the same winners. Run it a thousand times and
                       nothing changes.
                     </p>
                   </div>
@@ -477,9 +528,10 @@ export default function VerifyPage() {
                     <p className="text-sm font-semibold">You just checked it</p>
                     <p className="text-sm text-muted leading-relaxed">
                       Pick a draw above. Your browser fetches the same number from
-                      drand.sh — so a swapped seed can&apos;t slip through — and confirms
-                      the stored number is the hash of the stored signature. Both checks
-                      run on your machine, not ours.
+                      drand.sh, so a swapped seed can&apos;t slip through, and confirms
+                      the stored number is the hash of the stored signature. It then
+                      re-runs the shuffle. The comparisons happen in your browser, not
+                      on our servers.
                     </p>
                   </div>
                 </li>
@@ -564,7 +616,7 @@ function RoundStatusChip({ status }: { status: string }) {
       ) : (
         <Clock size={14} aria-hidden="true" />
       )}
-      <Chip.Label>{STATUS_LABEL[status] ?? status}</Chip.Label>
+      <Chip.Label>{statusLabel(status)}</Chip.Label>
     </Chip>
   );
 }

@@ -260,7 +260,7 @@ export default function TreasuryPage() {
                 net={net}
                 address={wallets?.platform.address ?? null}
                 balanceSol={wallets?.platform.balanceSol ?? null}
-                caption="pays winner airdrops and network fees"
+                caption="pays winner prizes and network fees"
                 emptyNote={
                   wallets
                     ? "The platform wallet isn’t available yet."

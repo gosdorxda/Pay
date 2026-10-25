@@ -149,7 +149,7 @@ export function SeedToWinner({
       setReproduced(null);
       setVerdict("unavailable");
       setVerdictNote(
-        "This draw has no saved random number — it may have failed before drawing.",
+        "This draw has no saved random number, so the shuffle can't be re-run.",
       );
       return;
     }
@@ -199,26 +199,34 @@ export function SeedToWinner({
             if (same) {
               setVerdict("match");
               setVerdictNote(
-                `Your browser worked out the same ${reps.length} winners, rank for rank — the draw was not hand-picked.`,
+                d.eligibleSource === "inferred"
+                  ? `Your browser worked out the same ${reps.length} winners, rank for rank, using the closest snapshot saved before this draw.`
+                  : `Your browser worked out the same ${reps.length} winners, rank for rank, from the saved number and the saved wallet list.`,
               );
             } else {
               setVerdict("mismatch");
               setVerdictNote(
-                "The winners your browser found don't match the saved ones — this draw should be investigated.",
+                d.eligibleSource === "inferred"
+                  ? "The winners your browser found don't match the saved ones. The wallet list was rebuilt from the closest snapshot, so check that first."
+                  : "The winners your browser found don't match the saved ones. This draw should be investigated.",
               );
             }
           })
-          .catch((e) => {
+          .catch(() => {
             if (!alive) return;
             setVerdict("error");
-            setVerdictNote((e as Error).message);
+            setVerdictNote(
+              "The re-run didn't finish in this browser. Refresh the page to try again.",
+            );
           });
       })
-      .catch((e) => {
+      .catch(() => {
         if (!alive) return;
         setDetailLoading(false);
         setVerdict("error");
-        setVerdictNote((e as Error).message);
+        setVerdictNote(
+          "The wallet list for this draw couldn't be loaded. Refresh the page to try again.",
+        );
       });
     return () => {
       alive = false;
@@ -233,16 +241,16 @@ export function SeedToWinner({
       <div className="px-5 py-4 border-b border-(--border) bg-surface">
         <Typography type="h5">From a random number to the winners</Typography>
         <p className="mt-1 text-sm text-muted leading-relaxed">
-          The checks above prove the random number is genuine. Here is how it becomes the
-          exact winning wallets — and your browser works this draw out again, live, to
-          compare.
+          The checks on this page test the random number against drand. Here is how it
+          becomes the winning wallets, and your browser works this draw out again, live,
+          to compare.
         </p>
       </div>
 
       <div className="px-5 py-5 flex flex-col gap-5">
         {/* Part A — the pipeline */}
         <div className="flex flex-col gap-4">
-          <p className="text-sm font-semibold">Four steps, number to winners</p>
+          <p className="text-sm font-semibold">Four steps from number to winners</p>
           <ol className="flex flex-col gap-3">
             <li className="flex gap-3">
               <span className="shrink-0 mt-0.5 size-7 rounded-full bg-default text-foreground flex items-center justify-center text-xs font-bold ring-1 ring-(--border)">
@@ -252,7 +260,7 @@ export function SeedToWinner({
                 <p className="text-sm font-semibold">The signature becomes the seed</p>
                 <p className="text-sm text-muted leading-relaxed">
                   drand signs every number it publishes. The randomness stored on this draw
-                  is the SHA-256 hash of that signature — 256 bits nobody could predict or
+                  is the SHA-256 hash of that signature, 256 bits nobody could predict or
                   steer.
                 </p>
                 {value && (
@@ -272,7 +280,7 @@ export function SeedToWinner({
                 <p className="text-sm text-muted leading-relaxed">
                   The seed is hashed with SHA-256 to start a chain: each step hashes the
                   previous 32-byte digest and reads a big-endian 64-bit integer. That
-                  deterministic stream drives the shuffle — same seed, same stream, every
+                  deterministic stream drives the shuffle. Same seed, same stream, every
                   time.
                 </p>
               </div>
@@ -286,8 +294,9 @@ export function SeedToWinner({
                 <p className="text-sm font-semibold">The holder list gets numbered</p>
                 <p className="text-sm text-muted leading-relaxed">
                   A snapshot of every wallet holding at least the minimum is taken, the
-                  project wallet is excluded, and the list is sorted by address. Each
-                  wallet gets a stable index{" "}
+                  exclusion list is applied (the project wallet, the token&apos;s liquidity
+                  accounts, and any blocked address), and the rest is sorted by address.
+                  Each wallet gets a stable index{" "}
                   <span className="font-mono text-foreground">0…N-1</span>. This draw had{" "}
                   <span className="font-mono text-foreground">{round.eligibleCount}</span>{" "}
                   eligible wallets.
@@ -322,16 +331,16 @@ export function SeedToWinner({
 
           {detail && detail.eligibleSource && detail.eligibleSource !== "unavailable" && (
             <p className="text-xs text-muted">
-              Eligible wallets:{" "}
+              Wallet list used for the re-run:{" "}
               <span className="font-mono text-foreground">
                 {detail.eligible?.length ?? 0}
               </span>{" "}
               addresses, sorted
               {detail.eligibleSource === "inferred"
-                ? " (rebuilt from the closest snapshot taken before this draw)"
+                ? " (rebuilt from the closest snapshot before this draw, so it may not match the original list exactly)"
                 : ""}
               {detail.platformExclusionReproduced === false
-                ? " (the project wallet could not be excluded in this re-run)"
+                ? " (the project wallet exclusion could not be rebuilt, so the pool may include it)"
                 : ""}
               .
             </p>
@@ -401,7 +410,7 @@ export function SeedToWinner({
             <p className="text-sm font-semibold">Watch the shuffle on five wallets</p>
             <p className="text-sm text-muted leading-relaxed">
               A toy example, so you can see the shuffle itself. Five wallets, sorted by
-              address, are shuffled with a fixed seed — the first two after the shuffle win.
+              address, are shuffled with a fixed seed. The first two after the shuffle win.
               This is exactly what happens in a real draw, just small enough to follow.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

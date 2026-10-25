@@ -305,7 +305,7 @@ async function buildStats() {
       leaderboard,
       dbError: null,
     };
-  } catch (e) {
+  } catch {
     return {
       network,
       windowDays: WINDOW_DAYS,
@@ -316,7 +316,9 @@ async function buildStats() {
       daily: [],
       holdersDaily: null,
       leaderboard: [],
-      dbError: (e as Error).message,
+      // Public endpoint: never echo the driver message (it can carry host,
+      // table and column names). The page only needs to know it failed.
+      dbError: "unavailable",
     };
   }
 }
