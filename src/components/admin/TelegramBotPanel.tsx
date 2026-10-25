@@ -10,9 +10,18 @@ import {
   Input,
   Separator,
   Switch,
+  TextArea,
   TextField,
 } from "@heroui/react";
 import { Skeleton } from "@/components/ui";
+import {
+  DEFAULT_DRAW_TEMPLATE,
+  DEFAULT_ROUND_TEMPLATE,
+  DRAW_PLACEHOLDER_HELP,
+  MAX_TEMPLATE_LENGTH,
+  ROUND_PLACEHOLDER_HELP,
+  type PlaceholderHelp,
+} from "@/lib/telegram-templates";
 
 /**
  * Admin → Telegram Bot.
@@ -27,9 +36,20 @@ import { Skeleton } from "@/components/ui";
  * token is write-only: the GET response only ever carries a masked hint, so an
  * empty token field means "keep the saved one". A token in `.env`
  * (`TELEGRAM_BOT_TOKEN`) works just as well and shows up as the source chip.
+ *
+ * Both message bodies are **editable templates** (Telegram HTML + `{placeholder}`
+ * slots). Defaults live in `lib/telegram-templates.ts` so this client component
+ * never imports the Prisma-backed bot module. "Preview edits" renders the draft
+ * against live data without saving it.
  */
 
 type TokenSource = "db" | "env" | "none";
+
+type Preview = {
+  round: string | null;
+  draw: string | null;
+  roundError: string | null;
+};
 
 type Overview = {
   ok?: boolean;
@@ -40,6 +60,8 @@ type Overview = {
     intervalMinutes: number;
     notifyRound: boolean;
     notifyDraw: boolean;
+    roundTemplate: string;
+    drawTemplate: string;
     tokenSource: TokenSource;
     tokenHint: string | null;
   };
@@ -53,11 +75,7 @@ type Overview = {
   lotteryCron: string;
   nextDrawAt: string | null;
   siteUrl: string;
-  preview: {
-    round: string | null;
-    draw: string | null;
-    roundError: string | null;
-  };
+  preview: Preview;
   history: { ts: string; level: string; message: string }[];
 };
 
@@ -68,6 +86,8 @@ type Draft = {
   intervalMinutes: string;
   notifyRound: boolean;
   notifyDraw: boolean;
+  roundTemplate: string;
+  drawTemplate: string;
   token: string;
 };
 
@@ -81,6 +101,8 @@ function toDraft(data: Overview): Draft {
     intervalMinutes: String(data.config.intervalMinutes),
     notifyRound: data.config.notifyRound,
     notifyDraw: data.config.notifyDraw,
+    roundTemplate: data.config.roundTemplate,
+    drawTemplate: data.config.drawTemplate,
     token: "",
   };
 }
@@ -124,6 +146,63 @@ function Field({
   );
 }
 
+function TemplateField({
+  label,
+  value,
+  error,
+  placeholders,
+  onChange,
+  onReset,
+}: {
+  label: string;
+  value: string;
+  error?: string;
+  placeholders: PlaceholderHelp[];
+  onChange: (value: string) => void;
+  onReset: () => void;
+}) {
+  return (
+    <Field
+      label={label}
+      hint="Telegram HTML is allowed: <b>, <i>, <code>, <a href>. Blank lines left by empty placeholders collapse."
+      error={error}
+    >
+      <TextField
+        aria-label={`${label} message template`}
+        value={value}
+        onChange={onChange}
+        isInvalid={!!error}
+      >
+        <TextArea
+          rows={8}
+          maxLength={MAX_TEMPLATE_LENGTH}
+          spellCheck={false}
+          className="font-mono text-xs"
+        />
+      </TextField>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {placeholders.map((p) => (
+          <code
+            key={p.token}
+            title={p.description}
+            className="rounded-md bg-default px-1.5 py-0.5 font-mono text-[11px] text-muted"
+          >
+            {`{${p.token}}`}
+          </code>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] tabular-nums text-muted">
+          {value.length}/{MAX_TEMPLATE_LENGTH}
+        </span>
+        <Button size="sm" variant="ghost" onPress={onReset}>
+          Reset to default
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
 export function TelegramBotPanel() {
   const [data, setData] = useState<Overview | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -131,6 +210,8 @@ export function TelegramBotPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** Rendered from unsaved template edits until they are saved/discarded. */
+  const [livePreview, setLivePreview] = useState<Preview | null>(null);
   const [chats, setChats] = useState<
     { id: string; title: string; type: string }[]
   >([]);
@@ -171,6 +252,8 @@ export function TelegramBotPanel() {
         intervalMinutes: Number(draft.intervalMinutes || 0),
         notifyRound: draft.notifyRound,
         notifyDraw: draft.notifyDraw,
+        roundTemplate: draft.roundTemplate,
+        drawTemplate: draft.drawTemplate,
         ...extra,
       };
       if (draft.token.trim()) config.token = draft.token.trim();
@@ -194,6 +277,7 @@ export function TelegramBotPanel() {
       }
       setData(body);
       setDraft(toDraft(body));
+      setLivePreview(null);
       setNotice({ kind: "ok", text: "Settings saved." });
     } catch (e) {
       setNotice({ kind: "err", text: (e as Error).message });
@@ -255,8 +339,56 @@ export function TelegramBotPanel() {
     }
   }
 
+  /**
+   * Renders the DRAFT templates against live data without saving them. The
+   * server owns the render so the preview can never drift from what the bot
+   * actually sends.
+   */
+  async function previewEdits() {
+    if (!draft) return;
+    setBusy("preview");
+    setNotice(null);
+    setErrors({});
+    try {
+      const r = await fetch("/api/admin/telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "preview",
+          templates: {
+            roundTemplate: draft.roundTemplate,
+            drawTemplate: draft.drawTemplate,
+          },
+        }),
+      });
+      const body = (await r.json()) as {
+        ok?: boolean;
+        preview?: Preview;
+        error?: string;
+      };
+      if (!r.ok || !body.preview) {
+        throw new Error(body.error ?? `HTTP ${r.status}`);
+      }
+      setLivePreview(body.preview);
+      setNotice({
+        kind: "ok",
+        text: "Preview updated from your edits — not saved yet.",
+      });
+    } catch (e) {
+      setNotice({ kind: "err", text: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const src = data?.config.tokenSource ?? "none";
   const tokenHint = data?.config.tokenHint ?? null;
+  const preview = livePreview ?? data?.preview ?? null;
+  const templatesDirty =
+    !!draft &&
+    !!data &&
+    (draft.roundTemplate !== data.config.roundTemplate ||
+      draft.drawTemplate !== data.config.drawTemplate);
 
   return (
     <Card>
@@ -512,6 +644,48 @@ export function TelegramBotPanel() {
               </div>
             </section>
 
+            <section className="flex flex-col gap-3 border-t border-(--border) pt-4">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <p className="text-sm font-semibold">Message templates</p>
+                <span className="text-[11px] leading-4 text-muted">
+                  The exact text of both posts — placeholders fill in live values.
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="ml-auto"
+                  onPress={previewEdits}
+                  isPending={busy === "preview"}
+                >
+                  Preview edits
+                </Button>
+              </div>
+
+              <TemplateField
+                label="Current round post"
+                value={draft.roundTemplate}
+                error={errors.roundTemplate}
+                placeholders={ROUND_PLACEHOLDER_HELP}
+                onChange={(v) => set("roundTemplate", v)}
+                onReset={() => set("roundTemplate", DEFAULT_ROUND_TEMPLATE)}
+              />
+              <TemplateField
+                label="Draw announcement"
+                value={draft.drawTemplate}
+                error={errors.drawTemplate}
+                placeholders={DRAW_PLACEHOLDER_HELP}
+                onChange={(v) => set("drawTemplate", v)}
+                onReset={() => set("drawTemplate", DEFAULT_DRAW_TEMPLATE)}
+              />
+
+              {templatesDirty ? (
+                <p className="text-[11px] leading-4 text-warning">
+                  Template edits are unsaved — the group keeps receiving the saved
+                  version until you press Save settings.
+                </p>
+              ) : null}
+            </section>
+
             <div className="flex flex-wrap items-center gap-2 border-t border-(--border) pt-4">
               <Button
                 variant="primary"
@@ -593,19 +767,24 @@ export function TelegramBotPanel() {
                 <span className="text-[11px] leading-4 text-muted">
                   Exactly what the group will read.
                 </span>
+                {livePreview ? (
+                  <Chip size="sm" color="warning" variant="soft">
+                    unsaved edits
+                  </Chip>
+                ) : null}
               </div>
               <div className="grid gap-3 lg:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-muted">
                     Current round · every {draft.intervalMinutes || "N"} min
                   </span>
-                  {data?.preview.round ? (
+                  {preview?.round ? (
                     <pre className="rounded-md bg-default px-3 py-2.5 font-mono text-xs whitespace-pre-wrap break-words">
-                      {data.preview.round}
+                      {preview.round}
                     </pre>
                   ) : (
                     <p className="text-small text-muted">
-                      {data?.preview.roundError ?? "Loading preview…"}
+                      {preview?.roundError ?? "Loading preview…"}
                     </p>
                   )}
                 </div>
@@ -614,7 +793,7 @@ export function TelegramBotPanel() {
                     After a draw
                   </span>
                   <pre className="rounded-md bg-default px-3 py-2.5 font-mono text-xs whitespace-pre-wrap break-words">
-                    {data?.preview.draw ?? "Loading preview…"}
+                    {preview?.draw ?? "Loading preview…"}
                   </pre>
                 </div>
               </div>

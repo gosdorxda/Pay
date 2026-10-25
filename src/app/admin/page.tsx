@@ -38,6 +38,7 @@ import { BuybackPanel } from "@/components/admin/BuybackPanel";
 import { CreatorFeesCard } from "@/components/admin/CreatorFeesCard";
 import { ExclusionsCard } from "@/components/admin/ExclusionsCard";
 import { TelegramBotPanel } from "@/components/admin/TelegramBotPanel";
+import { CacheCard } from "@/components/admin/CacheCard";
 import { ExclusionLabelChip } from "@/components/ExclusionLabelChip";
 import { nextCronOccurrence } from "@/lib/cron-next";
 import {
@@ -1996,6 +1997,7 @@ export default function AdminPage() {
           <Tabs.Panel id="settings" className="pt-4">
             <div className="flex flex-col gap-4">
               <SettingsSummary />
+              <CacheCard onCleared={refreshAll} />
               <DangerZoneCard onDone={refreshAll} />
             </div>
           </Tabs.Panel>

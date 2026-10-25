@@ -274,8 +274,21 @@ Kontrol yang tersedia di production:
 | Tujuan | Caranya |
 |---|---|
 | Menghentikan draw sementara | set `LOTTERY_CRON` ke jadwal mati, mis. `0 0 1 1 *` (1 Jan 00:00), lalu restart service |
+| Draw tiap jam (default) | `LOTTERY_CRON=0 * * * *` → menit ke-0 tiap jam |
+| **Draw tiap 10 menit** | `LOTTERY_CRON=*/10 * * * *` → :00, :10, :20, :30, :40, :50 (UTC) |
 | Draw harian jam 03:00 UTC | `LOTTERY_CRON=0 3 * * *` |
 | Benar-benar mengaktifkan draw | isi prize wallet, lalu pakai jadwal normal |
+
+Semua nilai 5-field, **UTC**, dan dibaca saat boot — setelah edit `.env` **restart service**
+untuk mendaftarkan ulang cron (`systemctl restart pay`). Jangan tertukar: `0 */10 * * *` juga
+sintaks sah, tapi artinya **tiap 10 jam** (menit ke-0), bukan tiap 10 menit.
+
+Catatan untuk jadwal rapat (mis. `*/10`): tiap tick memanggil `runLotteryRound()`, dan tick
+yang jatuh saat draw sebelumnya masih jalan **dilewati** (guard `drawing` di `scheduler.ts`),
+jadi tidak ada dua round bertumpuk. Tapi kalau prize wallet kosong, tiap tick tetap menulis
+satu baris **`skipped`** — 144 baris/hari — dan `/draws` hanya menampilkan **50** round
+terakhir (`take: 50`), jadi draw asli bisa tergeser keluar dari daftar. Untuk menguji
+`*/10` sebaiknya isi prize wallet dulu atau set `MIN_PRIZE_SOL` supaya tick diam.
 
 Jangan mengandalkan `LOTTERY_CRON_ENABLED` di server. Admin UI menampilkan penanda
 `production: always on` justru untuk mengingatkan hal ini.
@@ -691,6 +704,7 @@ Harapan:
 | `/api/status` | JSON berisi pool/round/holders (bukan halaman error) |
 | `/api/admin/palette` tanpa cookie | **401** |
 | `/api/admin/telegram` tanpa cookie | **401** |
+| `/api/admin/cache` tanpa cookie | **401** |
 | `http://` (non-TLS) | redirect 301 ke `https://` |
 | `sudo journalctl -u pay -n 30` | `Ready in`, tanpa `Missing required env var`, tanpa `did not initialize yet` |
 
@@ -719,6 +733,22 @@ Lalu uji manual di browser:
      terkirim tanpa link.
    - Token boleh diisi lewat `.env` (`TELEGRAM_BOT_TOKEN`) sebagai ganti panel; nilai di
      database menang atas env.
+   - **Teks kedua pesan sekarang bisa diedit** di bagian **Message templates**:
+     - **Round update** mendukung `{token} {round} {pool} {eligible} {firstPrizeLine}
+       {scheduleLine} {playableNote} {link}`; **Draw result** mendukung `{token} {round}
+       {pool} {eligible} {winners} {beacon} {payoutTxLine} {link}`.
+     - Baris opsional (`firstPrizeLine`, `playableNote`, `payoutTxLine`, `link`) yang kosong
+       otomatis tidak meninggalkan baris kosong.
+     - Batas **2000** karakter. **Preview edits** merender draft di server (jalur kode yang
+       sama dengan pengiriman asli) sebelum disimpan; **Reset to default** mengembalikan teks
+       bawaan. Placeholder yang salah ketik (mis. `{pool}` untuk draw) ditolak saat Save dan
+       saat Preview, dengan pesan yang menyebut nama placeholder-nya.
+     - Tetap HTML Telegram yang di-escape (`<b>`, `<i>`, `<a href>`, `<code>` boleh); jangan
+       menyisipkan alamat/URL tanpa tag, escaping otomatis.
+7. **Kartu Cache di `/admin` → Settings** (tekanan debug, bukan wajib): **Refresh** menampilkan
+   key yang sedang di-cache beserta umurnya, **Clear cache** mengosongkannya (`{ cleared, remaining }`)
+   lalu halaman mengambil ulang data. Aman dipakai kapan saja — cache hanya mempercepat GET,
+   sumber datanya tetap DB/RPC. `/api/admin/cache` tanpa cookie menjawab **401**.
 
 Angka acuan saat serah-terima (23–24 Okt 2026): `holders ≈ 509`, `lastRound.roundNumber = 46`
 (status `skipped`), pool **0 SOL** → semua draw `skipped` itu **normal**, bukan bug.

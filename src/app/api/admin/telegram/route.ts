@@ -5,6 +5,7 @@ import {
   getBotOverview,
   getBotStoredConfig,
   normalizeBotInput,
+  previewBotTemplates,
   saveBotConfig,
   sendLastDrawNow,
   sendRoundUpdate,
@@ -22,11 +23,13 @@ export const dynamic = "force-dynamic";
  *   PUT  → { config: { enabled, chatId, threadId, intervalMinutes,
  *                      notifyRound, notifyDraw, token?, clearToken? } }
  *          Validation errors come back as 400 with `errors` keyed by field.
- *   POST → { action: "test" | "round" | "lastDraw" | "chats" }
+ *   POST → { action: "test" | "round" | "lastDraw" | "chats" | "preview" }
  *          `test`     sends a connection message to the group
  *          `round`    sends the current-round post right now
  *          `lastDraw` re-sends the latest completed round announcement
  *          `chats`    lists chats that have messaged the bot (getUpdates)
+ *          `preview`  renders unsaved templates against live data
+ *                     ({ templates: { roundTemplate, drawTemplate } })
  *
  * Everything is admin-guarded; the bot token is never returned in full.
  */
@@ -84,7 +87,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { action?: unknown };
+  let body: { action?: unknown; templates?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -97,6 +100,13 @@ export async function POST(request: NextRequest) {
     if (action === "chats") {
       const res = await discoverChats();
       return NextResponse.json(res, { status: res.ok ? 200 : 400 });
+    }
+
+    if (action === "preview") {
+      const res = await previewBotTemplates(body.templates);
+      return res.ok
+        ? NextResponse.json({ ok: true, preview: res.preview })
+        : NextResponse.json({ error: res.error }, { status: 400 });
     }
 
     let result: { ok: boolean; error?: string };
@@ -112,7 +122,10 @@ export async function POST(request: NextRequest) {
         break;
       default:
         return NextResponse.json(
-          { error: "action must be one of: test, round, lastDraw, chats" },
+          {
+            error:
+              "action must be one of: test, round, lastDraw, chats, preview",
+          },
           { status: 400 }
         );
     }

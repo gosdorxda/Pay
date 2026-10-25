@@ -29,6 +29,12 @@ import { nextCronOccurrence } from "./cron-next";
 import { effectiveMinEligibleBigint } from "./settings";
 import { fmtSolNum, lamportsToSol, shortAddress } from "./format";
 import { SEO_KEYS } from "./seo";
+import {
+  applyTemplate,
+  DEFAULT_DRAW_TEMPLATE,
+  DEFAULT_ROUND_TEMPLATE,
+  validateTemplate,
+} from "./telegram-templates";
 
 export const BOT_CONFIG_KEY = "TELEGRAM_BOT_CONFIG";
 export const BOT_STATE_KEY = "TELEGRAM_BOT_STATE";
@@ -44,6 +50,8 @@ const DRAW_CATCHUP_MS = 30 * 60_000;
 const DRAW_RETRY_MS = 5 * 60_000;
 /** Winners listed in a draw message; the rest are summarised as "+N more". */
 const MAX_LISTED_WINNERS = 10;
+/** Telegram rejects any single message above this many characters. */
+const TELEGRAM_MAX_CHARS = 4096;
 
 export interface BotSettings {
   enabled: boolean;
@@ -57,6 +65,10 @@ export interface BotSettings {
   notifyRound: boolean;
   /** Announce every completed draw. */
   notifyDraw: boolean;
+  /** Editable Telegram-HTML body for the current-round post (`{placeholder}` slots). */
+  roundTemplate: string;
+  /** Editable Telegram-HTML body for the draw announcement. */
+  drawTemplate: string;
 }
 
 /** Settings + the token exactly as persisted (token may be empty = use env). */
@@ -195,6 +207,11 @@ function parseStoredConfig(raw: Record<string, unknown>): BotStoredConfig {
     ),
     notifyRound: asBool(raw.notifyRound, true),
     notifyDraw: asBool(raw.notifyDraw, true),
+    roundTemplate:
+      asString(raw.roundTemplate, DEFAULT_ROUND_TEMPLATE) ||
+      DEFAULT_ROUND_TEMPLATE,
+    drawTemplate:
+      asString(raw.drawTemplate, DEFAULT_DRAW_TEMPLATE) || DEFAULT_DRAW_TEMPLATE,
     token: asString(raw.token, ""),
   };
 }
@@ -265,6 +282,9 @@ export interface BotInput {
   intervalMinutes?: unknown;
   notifyRound?: unknown;
   notifyDraw?: unknown;
+  /** Editable message bodies (Telegram HTML + `{placeholder}` slots). */
+  roundTemplate?: unknown;
+  drawTemplate?: unknown;
   /** New token. Empty/absent = keep the saved one. */
   token?: unknown;
   /** Explicitly forget a token saved in the DB (env fallback still applies). */
@@ -318,6 +338,26 @@ export function normalizeBotInput(
   const notifyDraw =
     typeof raw.notifyDraw === "boolean" ? raw.notifyDraw : current.notifyDraw;
 
+  // Templates are admin-authored HTML, so the only real risks are a typo in a
+  // placeholder name (a literal "{pool}" in the group) and an over-long body.
+  const roundTemplate =
+    typeof raw.roundTemplate === "string"
+      ? raw.roundTemplate.trim()
+      : current.roundTemplate;
+  const roundTemplateError = validateTemplate("round", roundTemplate);
+  if (raw.roundTemplate !== undefined && roundTemplateError) {
+    errors.roundTemplate = roundTemplateError;
+  }
+
+  const drawTemplate =
+    typeof raw.drawTemplate === "string"
+      ? raw.drawTemplate.trim()
+      : current.drawTemplate;
+  const drawTemplateError = validateTemplate("draw", drawTemplate);
+  if (raw.drawTemplate !== undefined && drawTemplateError) {
+    errors.drawTemplate = drawTemplateError;
+  }
+
   let token = current.token;
   if (raw.clearToken === true) {
     token = "";
@@ -343,6 +383,8 @@ export function normalizeBotInput(
       intervalMinutes,
       notifyRound,
       notifyDraw,
+      roundTemplate,
+      drawTemplate,
       token,
     },
     errors,
@@ -444,82 +486,100 @@ function rankBadge(rank: number): string {
   return `#${rank}`;
 }
 
-function buildRoundHtml(s: RoundSnapshot): string {
-  const lines: string[] = [
-    `🎲 <b>${esc(s.tokenName)} lottery · round #${s.roundNumber}</b>`,
-    "",
-    `💰 Prize pool: <b>${sol(s.poolLamports)}</b>`,
-    `👥 Eligible holders: <b>${s.eligibleCount.toLocaleString("en-US")}</b>`,
-  ];
-  if (s.playable) {
-    lines.push(`🥇 1st place ≈ <b>${sol(s.firstPrizeLamports)}</b>`);
-  }
-  if (!s.lotteryEnabled) {
-    lines.push("⏸ Automatic draws are paused — the admin triggers each draw.");
-  } else if (s.nextDrawAt) {
-    lines.push(
-      `⏳ Next draw: <b>in ${fmtCountdown(
+/**
+ * Values for the round template. Every interpolated value is escaped here, so
+ * the admin-written template can never smuggle an unescaped address or URL in.
+ * Optional lines resolve to "" — `applyTemplate` collapses the blank line.
+ */
+function roundValues(s: RoundSnapshot): Record<string, string> {
+  const firstPrizeLine = s.playable
+    ? `🥇 1st place ≈ <b>${sol(s.firstPrizeLamports)}</b>`
+    : "";
+  const scheduleLine = !s.lotteryEnabled
+    ? "⏸ Automatic draws are paused — the admin triggers each draw."
+    : s.nextDrawAt
+    ? `⏳ Next draw: <b>in ${fmtCountdown(
         s.nextDrawAt.getTime() - Date.now()
       )}</b> · ${utcClock(s.nextDrawAt)}`
+    : "⏳ Next draw: <b>not scheduled</b>";
+  const playableNote = s.playable
+    ? ""
+    : s.poolLamports > 0n
+    ? "<i>Waiting for the pool to reach the minimum prize.</i>"
+    : "<i>No prize pool yet — waiting for the first deposit.</i>";
+  const link = s.siteUrl
+    ? `🔗 <a href="${esc(s.siteUrl)}">${esc(s.siteUrl)}</a>`
+    : "";
+
+  return {
+    token: esc(s.tokenName),
+    round: String(s.roundNumber),
+    pool: sol(s.poolLamports),
+    eligible: s.eligibleCount.toLocaleString("en-US"),
+    firstPrizeLine,
+    scheduleLine,
+    playableNote,
+    link,
+  };
+}
+
+/** Refuse to call the API with a body Telegram will reject anyway. */
+function assertMessageLength(html: string): string {
+  if (html.length > TELEGRAM_MAX_CHARS) {
+    throw new Error(
+      `The message is ${html.length} characters — Telegram allows ${TELEGRAM_MAX_CHARS}. Shorten the template in Admin → Telegram Bot.`
     );
-  } else {
-    lines.push("⏳ Next draw: <b>not scheduled</b>");
   }
-  if (!s.playable) {
-    lines.push(
-      "",
-      s.poolLamports > 0n
-        ? "<i>Waiting for the pool to reach the minimum prize.</i>"
-        : "<i>No prize pool yet — waiting for the first deposit.</i>"
+  return html;
+}
+
+function renderRoundHtml(
+  s: RoundSnapshot,
+  template: string = DEFAULT_ROUND_TEMPLATE
+): string {
+  return assertMessageLength(applyTemplate(template, roundValues(s)));
+}
+
+/** Ranked winner block (multi-line) used by the `{winners}` slot. */
+function winnerLines(d: DrawSnapshot): string {
+  if (d.winners.length === 0) return "<i>No winners this round.</i>";
+  const lines = d.winners
+    .slice(0, MAX_LISTED_WINNERS)
+    .map(
+      (w) =>
+        `${rankBadge(w.rank)} <code>${esc(
+          shortAddress(w.address, 6, 6)
+        )}</code> — <b>${sol(w.amountLamports)}</b>`
     );
-  }
-  if (s.siteUrl) {
-    lines.push("", `🔗 <a href="${esc(s.siteUrl)}">${esc(s.siteUrl)}</a>`);
+  if (d.winners.length > MAX_LISTED_WINNERS) {
+    lines.push(`…and ${d.winners.length - MAX_LISTED_WINNERS} more winners`);
   }
   return lines.join("\n");
 }
 
-function buildDrawHtml(d: DrawSnapshot): string {
-  const lines: string[] = [
-    `🏆 <b>${esc(d.tokenName)} lottery · round #${d.roundNumber} drawn</b>`,
-    "",
-    `💰 Pool: <b>${sol(d.prizePoolLamports)}</b> · 👥 ${d.eligibleCount.toLocaleString(
-      "en-US"
-    )} eligible`,
-    "",
-  ];
+function drawValues(d: DrawSnapshot): Record<string, string> {
+  const roundUrl = d.siteUrl ? `${d.siteUrl}/rounds/${d.roundNumber}` : "";
+  return {
+    token: esc(d.tokenName),
+    round: String(d.roundNumber),
+    pool: sol(d.prizePoolLamports),
+    eligible: d.eligibleCount.toLocaleString("en-US"),
+    winners: winnerLines(d),
+    beacon: d.randomnessVerified ? "cross-relay verified" : "single relay",
+    payoutTxLine: d.payoutTx
+      ? `📤 Payout tx: <code>${esc(shortAddress(d.payoutTx, 8, 8))}</code>`
+      : "",
+    link: roundUrl
+      ? `🔗 <a href="${esc(roundUrl)}">${esc(roundUrl)}</a>`
+      : "",
+  };
+}
 
-  if (d.winners.length === 0) {
-    lines.push("<i>No winners this round.</i>");
-  } else {
-    for (const w of d.winners.slice(0, MAX_LISTED_WINNERS)) {
-      lines.push(
-        `${rankBadge(w.rank)} <code>${esc(
-          shortAddress(w.address, 6, 6)
-        )}</code> — <b>${sol(w.amountLamports)}</b>`
-      );
-    }
-    if (d.winners.length > MAX_LISTED_WINNERS) {
-      lines.push(`…and ${d.winners.length - MAX_LISTED_WINNERS} more winners`);
-    }
-  }
-
-  lines.push(
-    "",
-    `🔐 drand beacon: <b>${
-      d.randomnessVerified ? "cross-relay verified" : "single relay"
-    }</b>`
-  );
-  if (d.payoutTx) {
-    lines.push(
-      `📤 Payout tx: <code>${esc(shortAddress(d.payoutTx, 8, 8))}</code>`
-    );
-  }
-  if (d.siteUrl) {
-    const url = `${d.siteUrl}/rounds/${d.roundNumber}`;
-    lines.push("", `🔗 <a href="${esc(url)}">${esc(url)}</a>`);
-  }
-  return lines.join("\n");
+function renderDrawHtml(
+  d: DrawSnapshot,
+  template: string = DEFAULT_DRAW_TEMPLATE
+): string {
+  return assertMessageLength(applyTemplate(template, drawValues(d)));
 }
 
 /* ------------------------------------------------------------------------- *
@@ -752,8 +812,9 @@ export async function sendRoundUpdate(): Promise<SendResult> {
   if (!ready.ok) return { ok: false, error: ready.error };
 
   try {
-    const html = buildRoundHtml(
-      await roundSnapshot(await getTokenName(), await getSiteUrl())
+    const html = renderRoundHtml(
+      await roundSnapshot(await getTokenName(), await getSiteUrl()),
+      ready.settings.roundTemplate
     );
     await sendMessage(ready.token, ready.settings, html);
     await patchBotState({
@@ -793,7 +854,11 @@ async function sendDraw(
   }
 
   try {
-    await sendMessage(ready.token, ready.settings, buildDrawHtml(round));
+    await sendMessage(
+      ready.token,
+      ready.settings,
+      renderDrawHtml(round, ready.settings.drawTemplate)
+    );
     await patchBotState({
       lastDrawRound: round.roundNumber,
       lastDrawAttemptAt: new Date().toISOString(),
@@ -1071,39 +1136,99 @@ function maskToken(token: string): string {
   return `••••${token.slice(-4)}`;
 }
 
-/** Everything the admin panel renders in one round-trip. */
-export async function getBotOverview(): Promise<BotOverview> {
-  const [{ settings, token, tokenSource }, state, tokenName, siteUrl] =
-    await Promise.all([
-      getBotConfig(),
-      getBotState(),
-      getTokenName(),
-      getSiteUrl(),
-    ]);
+type BotPreview = BotOverview["preview"];
 
-  let roundPreview: string | null = null;
+/**
+ * Renders both messages against live data for the given templates. Used by the
+ * panel GET (saved templates) and by the "preview edits" action, so an admin can
+ * check an unsaved rewrite before committing it.
+ */
+async function buildPreviews(templates: {
+  roundTemplate: string;
+  drawTemplate: string;
+}): Promise<BotPreview> {
+  const [tokenName, siteUrl] = await Promise.all([getTokenName(), getSiteUrl()]);
+
+  let round: string | null = null;
   let roundError: string | null = null;
   try {
-    roundPreview = toPlain(
-      buildRoundHtml(await roundSnapshot(tokenName, siteUrl))
+    round = toPlain(
+      renderRoundHtml(
+        await roundSnapshot(tokenName, siteUrl),
+        templates.roundTemplate
+      )
     );
   } catch (e) {
     roundError = (e as Error).message;
   }
 
-  let drawPreview: string;
+  let draw: string;
   try {
     const lastDraw = await prisma.lotteryRound.findFirst({
       where: { status: "completed" },
       orderBy: { roundNumber: "desc" },
       include: { winners: { orderBy: { rank: "asc" } } },
     });
-    drawPreview = lastDraw
-      ? toPlain(buildDrawHtml(toDrawSnapshot(lastDraw, tokenName, siteUrl)))
+    draw = lastDraw
+      ? toPlain(
+          renderDrawHtml(
+            toDrawSnapshot(lastDraw, tokenName, siteUrl),
+            templates.drawTemplate
+          )
+        )
       : "No completed round yet — the first draw announcement will appear here.";
   } catch (e) {
-    drawPreview = `Preview unavailable: ${(e as Error).message}`;
+    draw = `Preview unavailable: ${(e as Error).message}`;
   }
+
+  return { round, draw, roundError };
+}
+
+/**
+ * Preview for templates that have not been saved yet. Validation runs first so
+ * a typo comes back as a readable form error instead of a partial render.
+ */
+export async function previewBotTemplates(input: unknown): Promise<
+  { ok: true; preview: BotPreview } | { ok: false; error: string }
+> {
+  const raw = asRecord(input);
+  const { settings } = await getBotConfig();
+  const roundTemplate =
+    typeof raw.roundTemplate === "string"
+      ? raw.roundTemplate.trim()
+      : settings.roundTemplate;
+  const drawTemplate =
+    typeof raw.drawTemplate === "string"
+      ? raw.drawTemplate.trim()
+      : settings.drawTemplate;
+
+  const error =
+    validateTemplate("round", roundTemplate) ??
+    validateTemplate("draw", drawTemplate);
+  if (error) return { ok: false, error };
+
+  try {
+    return {
+      ok: true,
+      preview: await buildPreviews({ roundTemplate, drawTemplate }),
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Everything the admin panel renders in one round-trip. */
+export async function getBotOverview(): Promise<BotOverview> {
+  const [{ settings, token, tokenSource }, state, siteUrl] = await Promise.all([
+    getBotConfig(),
+    getBotState(),
+    getSiteUrl(),
+  ]);
+
+  const preview = await buildPreviews({
+    roundTemplate: settings.roundTemplate,
+    drawTemplate: settings.drawTemplate,
+  });
 
   return {
     config: {
@@ -1113,6 +1238,8 @@ export async function getBotOverview(): Promise<BotOverview> {
       intervalMinutes: settings.intervalMinutes,
       notifyRound: settings.notifyRound,
       notifyDraw: settings.notifyDraw,
+      roundTemplate: settings.roundTemplate,
+      drawTemplate: settings.drawTemplate,
       tokenSource,
       tokenHint: tokenSource === "none" ? null : maskToken(token),
     },
@@ -1121,7 +1248,7 @@ export async function getBotOverview(): Promise<BotOverview> {
     lotteryCron: process.env.LOTTERY_CRON?.trim() || "0 * * * *",
     nextDrawAt: nextDrawAt()?.toISOString() ?? null,
     siteUrl,
-    preview: { round: roundPreview, draw: drawPreview, roundError },
+    preview,
     history: getTelegramHistory(),
   };
 }

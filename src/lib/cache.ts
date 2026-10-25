@@ -31,8 +31,20 @@ interface Entry {
   ts: number;
 }
 
-const store = new Map<string, Entry>();
-const inflight = new Map<string, Promise<unknown>>();
+const globalCache = globalThis as typeof globalThis & {
+  /** Shared across route bundles / HMR reloads — see the comment above. */
+  __payCacheStore?: Map<string, Entry>;
+  __payCacheInflight?: Map<string, Promise<unknown>>;
+};
+
+/**
+ * The maps live on `globalThis` on purpose: Next.js can evaluate this module
+ * more than once (a bundle per route in some builds, plus HMR in dev), and a
+ * per-instance Map would let `POST /api/admin/cache` clear a different store
+ * than the one `/api/status` filled. One map per process, one effective cache.
+ */
+const store = (globalCache.__payCacheStore ??= new Map<string, Entry>());
+const inflight = (globalCache.__payCacheInflight ??= new Map());
 
 function refresh<T>(key: string, load: () => Promise<T>): Promise<T> {
   const running = inflight.get(key) as Promise<T> | undefined;
@@ -78,7 +90,7 @@ export async function cached<T>(
 /**
  * Drops cached payloads. With no argument everything is cleared — mutation
  * routes (draw, sync, claim, reset, exclusions) use that so the admin UI never
- * reads a pre-action value.
+ * reads a pre-action value. A `prefix` narrows it (`"admin:"`, `"rounds"`).
  */
 export function clearCache(prefix?: string): number {
   let n = 0;

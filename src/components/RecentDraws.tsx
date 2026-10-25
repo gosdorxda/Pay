@@ -2,13 +2,20 @@
 
 import { useId, useState } from "react";
 import { ArrowRight, ChevronDown } from "lucide-react";
-import { Tooltip } from "@heroui/react";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+  Tooltip,
+} from "@heroui/react";
 import { DrandBeacon } from "@/components/DrandBeacon";
 import { Icon, SkeletonRows } from "@/components/ui";
 import { fmtSolHuman, timeAgo } from "@/lib/format";
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Homepage "Recent draws" — collapsible rows.
+   Homepage "Recent draws" — collapsible rows, paged 5 at a time.
 
    Each collapsed row reads left → centre → right:
      1.24 SOL            pumpfun  →  pay  →  drand  →  ①②③      2h ago ⌄
@@ -21,7 +28,15 @@ import { fmtSolHuman, timeAgo } from "@/lib/format";
    beacon), inline; there is deliberately no "Open draw #N" link because the row
    already is the draw. Rows are separate cards with a small gap, not a glued
    list.
+
+   Paging is client-side over the 50-round window /api/rounds already returns:
+   five rows per page keeps the section short enough that the hero and "how it
+   works" stay reachable, while Prev/Next still lets anyone walk the history
+   without leaving the homepage. "/draws" remains the deeper archive.
    ────────────────────────────────────────────────────────────────────────── */
+
+/** Rows per page. Five fits a laptop fold without turning the page into a list. */
+const PAGE_SIZE = 5;
 
 type Winner = {
   rank: number;
@@ -389,10 +404,12 @@ export default function RecentDraws({
   loading: boolean;
   dbError: string | null;
 }) {
+  const [page, setPage] = useState(1);
+
   if (loading) {
     return (
       <div className="rounded-lg border border-(--border) bg-surface px-5 py-4">
-        <SkeletonRows count={3} className="px-1" />
+        <SkeletonRows count={PAGE_SIZE} className="px-1" />
       </div>
     );
   }
@@ -415,16 +432,66 @@ export default function RecentDraws({
     );
   }
 
+  // Clamp instead of storing a corrected page: rounds can shrink (a reset, or a
+  // shorter list after a refresh) and the render must never point past the end.
+  const totalPages = Math.max(1, Math.ceil(rounds.length / PAGE_SIZE));
+  const current = Math.min(Math.max(1, page), totalPages);
+  const start = (current - 1) * PAGE_SIZE;
+  const visible = rounds.slice(start, start + PAGE_SIZE);
+  const lastShown = Math.min(start + PAGE_SIZE, rounds.length);
+
   return (
-    <ul className="flex flex-col gap-2">
-      {rounds.map((r) => (
-        <li
-          key={r.roundNumber}
-          className="overflow-hidden rounded-lg border border-(--border) bg-surface"
-        >
-          <DrawRow round={r} chain={chain} network={network} />
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-2">
+        {visible.map((r) => (
+          <li
+            key={r.roundNumber}
+            className="overflow-hidden rounded-lg border border-(--border) bg-surface"
+          >
+            <DrawRow round={r} chain={chain} network={network} />
+          </li>
+        ))}
+      </ul>
+
+      {totalPages > 1 && (
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted tabular-nums">
+            Showing {start + 1}–{lastShown} of {rounds.length} draws
+          </p>
+          <Pagination
+            size="sm"
+            aria-label="Draw history pages"
+            className="justify-center sm:justify-end"
+          >
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  isDisabled={current <= 1}
+                  onPress={() => setPage(current - 1)}
+                >
+                  Prev
+                </PaginationPrevious>
+              </PaginationItem>
+              <PaginationItem>
+                <span
+                  aria-live="polite"
+                  className="px-2 text-xs text-muted tabular-nums"
+                >
+                  Page {current} / {totalPages}
+                </span>
+              </PaginationItem>
+              <PaginationItem>
+                <PaginationNext
+                  isDisabled={current >= totalPages}
+                  onPress={() => setPage(current + 1)}
+                >
+                  Next
+                </PaginationNext>
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        </div>
+      )}
+    </div>
   );
 }

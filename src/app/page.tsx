@@ -315,11 +315,12 @@ export default function Home() {
   const totalHolders = status?.totalHolders ?? 0;
   // Share of all holders that clear the threshold — drives the eligible card bar.
   const eligibleShare = totalHolders > 0 ? Math.min(100, (eligibleHolders / totalHolders) * 100) : 0;
-  // Homepage shows the 3 newest settled rounds only — the rest live behind
-  // "view all" (/draws), so no pagination / load-more belongs here.
-  const completedRounds = (rounds?.rounds ?? [])
-    .filter((r) => r.status === "completed")
-    .slice(0, 3);
+  // Every settled round in the 50-round window is handed to RecentDraws, which
+  // pages them 5 at a time in place — so the homepage covers the recent history
+  // without bouncing to /draws, while "/draws" stays the full archive.
+  const completedRounds = (rounds?.rounds ?? []).filter(
+    (r) => r.status === "completed"
+  );
   const rawPoolSol = status?.prizePoolSol ?? lastRound?.prizePoolSol ?? 0;
   const prize = status?.prize ?? null;
   // What will actually be paid this round (cap applied, fee deducted). Equal to
