@@ -15,7 +15,7 @@ import {
   Typography,
 } from "@heroui/react";
 import { AppShell } from "@/components/AppShell";
-import { Icon, Skeleton, SkeletonStat, SkeletonRows } from "@/components/ui";
+import { ExternalLink, Icon, Skeleton, SkeletonStat, SkeletonRows } from "@/components/ui";
 import { explorerUrl, fmtSolHuman, shortAddress } from "@/lib/format";
 import { reproduceWinners } from "@/lib/lottery/verify";
 
@@ -84,7 +84,7 @@ const STATUS_LABEL: Record<string, string> = {
 const statusLabel = (status: string): string =>
   STATUS_LABEL[status] ?? status.charAt(0).toUpperCase() + status.slice(1);
 
-/** Where the wallet list came from — machine values, user-facing words. */
+/** Where the wallet list came from: machine values, user-facing words. */
 const SOURCE_LABEL: Record<string, string> = {
   recorded: "Saved with this draw",
   inferred: "Closest snapshot",
@@ -93,16 +93,20 @@ const SOURCE_LABEL: Record<string, string> = {
 
 /**
  * The engine stores an operator log line on skipped/failed draws (e.g.
- * "Prize pool 0 SOL (balance at/below reserve) — round skipped"). Show one plain
+ * "Prize pool 0 SOL (balance at/below reserve) - round skipped"). Show one plain
  * sentence and keep the raw text on `title` for anyone who wants details.
  */
 function roundNote(round: Round): string {
   const raw = round.error ?? "";
   const s = raw.toLowerCase();
   if (round.status === "skipped") {
-    return s.includes("below minimum")
-      ? "The prize pool didn’t reach the minimum needed for a draw."
-      : "The prize pool was empty, so this draw picked no winners.";
+    if (s.includes("below minimum")) {
+      return "The prize pool didn’t reach the minimum needed for a draw.";
+    }
+    if (s.includes("eligible")) {
+      return "No wallet met the minimum balance for this draw.";
+    }
+    return "The prize pool was empty, so this draw picked no winners.";
   }
   if (s.includes("failed on-chain") || s.includes("insufficientfunds")) {
     return "The payout transaction failed on-chain, so this draw didn’t pay out.";
@@ -110,12 +114,15 @@ function roundNote(round: Round): string {
   if (s.includes("payout tx")) {
     return "The payout transaction failed, so this draw didn’t pay out.";
   }
-  return raw;
+  if (round.status === "failed") {
+    return "This draw did not finish, so it paid no one.";
+  }
+  return "This draw closed without winners.";
 }
 
 
 function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
+  if (!iso) return "Not recorded";
   try {
     return new Date(iso).toLocaleString("en-US", {
       dateStyle: "medium",
@@ -220,38 +227,42 @@ export default function RoundPage() {
     const value = round.randomnessValue;
     const sig = round.randomnessSignature;
 
-    // Check 1 — local: randomness must equal SHA-256(signature). drand quicknet
-    // defines randomness = sha256(signature), so this is a zero-trust check that
-    // the two stored fields are internally consistent.
-    setShaResult({ state: "running", detail: "computing SHA-256…" });
+    // Check 1 (local): the saved number must equal SHA-256(signature). drand
+    // quicknet defines randomness = sha256(signature), so this checks that the
+    // two saved fields belong together.
+    setShaResult({ state: "running", detail: "Computing SHA-256…" });
     sha256Hex(sig)
       .then((hash) => {
         if (!alive) return;
         if (hash === value.toLowerCase()) {
           setShaResult({
             state: "pass",
-            detail: `SHA-256(signature) = ${hash.slice(0, 16)}… matches the stored randomness`,
+            detail: `SHA-256(signature) = ${hash.slice(0, 16)}… matches the saved number`,
           });
         } else {
           setShaResult({
             state: "fail",
-            detail: `SHA-256(signature) = ${hash.slice(0, 16)}… ≠ stored randomness ${value.slice(0, 16)}…`,
+            detail: `SHA-256(signature) = ${hash.slice(0, 16)}… does not match the saved number ${value.slice(0, 16)}…`,
           });
         }
       })
-      .catch((e) => {
-        if (alive) setShaResult({ state: "error", detail: (e as Error).message });
+      .catch(() => {
+        if (alive)
+          setShaResult({
+            state: "error",
+            detail: "The browser could not hash the signature. Reload the page and try again.",
+          });
       });
 
-    // Check 2 — external: fetch the same round from the drand public beacon
+    // Check 2 (external): fetch the same round from the drand public beacon
     // (CORS-open) and compare the published randomness + signature.
     if (round.randomnessRound == null || !chain) {
       setBeaconResult({
         state: "idle",
-        detail: "no beacon round recorded for this draw",
+        detail: "No beacon round was saved for this draw.",
       });
     } else {
-      setBeaconResult({ state: "running", detail: "fetching drand.sh…" });
+      setBeaconResult({ state: "running", detail: "Fetching the round from drand.sh…" });
       fetch(`${chain.verifyBaseUrl}/${round.randomnessRound}`, {
         headers: { Accept: "application/json" },
       })
@@ -270,23 +281,27 @@ export default function RoundPage() {
           ) {
             setBeaconResult({
               state: "pass",
-              detail: `drand.sh published the same randomness + signature for beacon round ${round.randomnessRound}`,
+              detail: `drand.sh published the same number and signature for beacon round ${round.randomnessRound}`,
             });
           } else {
             setBeaconResult({
               state: "fail",
-              detail: `drand.sh returned randomness ${gotRnd.slice(0, 16) || "(empty)"} ≠ our stored value`,
+              detail: `drand.sh returned different values for beacon round ${round.randomnessRound}`,
             });
           }
         })
-        .catch((e) => {
-          if (alive) setBeaconResult({ state: "error", detail: (e as Error).message });
+        .catch(() => {
+          if (alive)
+            setBeaconResult({
+              state: "error",
+              detail: "drand.sh did not answer, so this check could not run. Reload to try again.",
+            });
         });
     }
 
-    // Check 3 — derivation: reproduce the winner selection client-side from
-    // (randomness, eligible list) and compare rank→address to stored winners.
-    // This proves the beacon wasn't bypassed when picking winners.
+    // Check 3 (derivation): rebuild the winner selection from the saved number
+    // and the saved wallet list, then compare rank by rank. It shows the winners
+    // follow from those saved inputs; it cannot prove the inputs are originals.
     const eligible = data?.eligible ?? [];
     const source = data?.eligibleSource ?? "unavailable";
     const platformOk = data?.platformExclusionReproduced ?? false;
@@ -294,12 +309,12 @@ export default function RoundPage() {
       setDeriveResult({
         state: "idle",
         detail:
-          "Eligible snapshot unavailable for this draw — derivation needs the holder batch the draw selected from.",
+          "The holder snapshot for this draw is not available, so the winners cannot be rebuilt here.",
       });
     } else {
       setDeriveResult({
         state: "running",
-        detail: `reproducing the Fisher–Yates shuffle over ${eligible.length} eligible holders…`,
+        detail: `Re-running the shuffle over ${eligible.length} eligible holders…`,
       });
       reproduceWinners(value, eligible.map((e) => e.address), round.winners.length)
         .then((reproduced) => {
@@ -311,28 +326,32 @@ export default function RoundPage() {
             if (reproduced[i]?.address !== stored[i]?.address) mismatches++;
           }
           const caveats =
-            (source === "inferred" ? " · snapshot inferred for this draw" : "") +
+            (source === "inferred" ? " · the snapshot was not saved with this draw" : "") +
             (!platformOk
-              ? " · platform-wallet exclusion not reproducible in this env"
+              ? " · the project-wallet exclusion could not be rebuilt here"
               : "");
           if (mismatches === 0 && reproduced.length === stored.length) {
             setDeriveResult({
               state: "pass",
-              detail: `Re-derived all ${stored.length} winners from the eligible pool + randomness — exact rank-for-rank match${caveats}`,
+              detail: `Re-derived all ${stored.length} winners from the saved wallet list and the number: same addresses, same order${caveats}`,
             });
           } else {
             setDeriveResult({
               state: "fail",
-              detail: `Re-derived winners do NOT match stored — ${mismatches} rank(s) differ${
+              detail: `Re-derived winners do not match the saved ones: ${mismatches} rank(s) differ${
                 source === "inferred"
-                  ? " (snapshot inferred — a sync race could explain this)"
+                  ? " · the snapshot was not saved with this draw, which can explain a mismatch"
                   : ""
               }`,
             });
           }
         })
-        .catch((e) => {
-          if (alive) setDeriveResult({ state: "error", detail: (e as Error).message });
+        .catch(() => {
+          if (alive)
+            setDeriveResult({
+              state: "error",
+              detail: "The shuffle could not run in this browser. Reload the page and try again.",
+            });
         });
     }
 
@@ -375,14 +394,15 @@ export default function RoundPage() {
             )}
           </div>
           <Typography type="body-sm" color="muted" className="mt-1.5">
-            Who won, the random number that picked them, and three checks your browser can run to
-            confirm nothing was edited afterwards.
+            Who won, the random number that picked them, and the checks that show the winners follow
+            from that number and the wallet list saved with the draw.
           </Typography>
         </div>
 
         {fetchError && (
-          <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger" title={fetchError}>
-            Couldn’t load this draw. The link may be wrong, or the server didn’t answer — try again in a moment.
+          <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+            Couldn’t load this draw. The link may be wrong, or the server didn’t answer. Try again in
+            a moment.
           </div>
         )}
 
@@ -391,10 +411,10 @@ export default function RoundPage() {
             <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
               <Skeleton className="h-5 w-32" />
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-                <SkeletonStat label="Finished" />
+                <SkeletonStat label="Closed" />
                 <SkeletonStat label="Prize pool" />
-                <SkeletonStat label="Eligible wallets" />
-                <SkeletonStat label="Randomness round" />
+                <SkeletonStat label="Eligible holders" />
+                <SkeletonStat label="Beacon round" />
               </div>
             </div>
             <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
@@ -409,11 +429,15 @@ export default function RoundPage() {
             <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
               <h2 className="text-base font-semibold tracking-tight">Draw summary</h2>
               <dl className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-sm">
-                <Field label="Finished" value={fmtDate(round.completedAt)} />
+                <Field label="Closed" value={fmtDate(round.completedAt)} />
                 <Field label="Prize pool" value={fmtSolHuman(round.prizePoolSol)} mono />
-                <Field label="Eligible wallets" value={String(round.eligibleCount)} mono />
-                <Field label="Randomness round" value={round.randomnessRound != null ? String(round.randomnessRound) : "—"} mono />
+                <Field label="Eligible holders" value={String(round.eligibleCount)} mono />
+                <Field label="Beacon round" value={round.randomnessRound != null ? String(round.randomnessRound) : "Not recorded"} mono />
               </dl>
+              <p className="text-xs text-muted">
+                Prize pool is the amount this draw had to pay out. Winner payouts are net of any
+                platform fee and rounding.
+              </p>
               {round.error && (
                 <p className={round.status === "failed" ? "text-sm text-danger" : "text-sm text-muted"} title={round.error}>
                   {roundNote(round)}
@@ -422,7 +446,9 @@ export default function RoundPage() {
             </div>
 
             {round.winners.length === 0 ? (
-              <p className="text-sm text-muted">This draw picked no winners.</p>
+              round.error ? null : (
+                <p className="text-sm text-muted">This draw picked no winners.</p>
+              )
             ) : (
               <div className="table-bordered rounded-lg border border-(--border) overflow-hidden bg-surface">
                 <Table variant="secondary">
@@ -439,9 +465,9 @@ export default function RoundPage() {
                         <TableRow key={w.rank}>
                           <TableCell className="text-muted font-mono">{w.rank}</TableCell>
                           <TableCell>
-                            <a href={explorerUrl(w.address, "address", net)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-foreground hover:text-accent transition">
+                            <a href={explorerUrl(w.address, "address", net)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-muted transition-colors hover:text-foreground hover:underline">
                               {shortAddress(w.address, 6, 6)}
-                              <Icon name="arrow-up-right" className="h-3.5 w-3.5 text-muted" />
+                              <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
                             </a>
                           </TableCell>
                           <TableCell className="text-right font-mono tabular-nums">{fmtSolHuman(w.amountSol)}</TableCell>
@@ -452,12 +478,12 @@ export default function RoundPage() {
                           </TableCell>
                           <TableCell>
                             {w.payoutTx ? (
-                              <a href={explorerUrl(w.payoutTx, "tx", net)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-foreground hover:text-accent transition">
+                              <a href={explorerUrl(w.payoutTx, "tx", net)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-muted transition-colors hover:text-foreground hover:underline">
                                 {shortAddress(w.payoutTx, 6, 6)}
-                                <Icon name="arrow-up-right" className="h-3.5 w-3.5 text-muted" />
+                                <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
                               </a>
                             ) : (
-                              <span className="text-muted">—</span>
+                              <span className="text-muted">None</span>
                             )}
                           </TableCell>
                         </TableRow>
@@ -468,28 +494,38 @@ export default function RoundPage() {
               </div>
             )}
 
-            <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-base font-semibold tracking-tight">Three checks, all in your browser</h2>
+            {round.randomnessValue && round.randomnessSignature ? (
+              <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-base font-semibold tracking-tight">Three checks that run here</h2>
+                  <p className="text-sm text-muted">
+                    When all three pass, the number is the one drand published and the winners follow
+                    from that number and the saved wallet list. They cannot show that the list holds
+                    every holder.
+                  </p>
+                </div>
+                <CheckRow title="The saved number belongs to its signature" hint="Local check: the number must be the SHA-256 hash of the signature saved with it. Editing one without the other fails here; the next check is what ties the signature to drand." result={shaResult} color={checkColor} label={checkLabel} />
+                <CheckRow title="drand published the same number" hint="External check: fetches that beacon round from drand.sh and compares the number and signature with the values saved here." result={beaconResult} color={checkColor} label={checkLabel} />
+                <CheckRow title="A fresh shuffle produces the same winners" hint="Rebuilds the winners from the saved wallet list and the saved number, then compares them rank by rank. It shows the winners follow from that list, not that the list holds every holder." result={deriveResult} color={checkColor} label={checkLabel} />
+                {round.randomnessRound != null && chain && (
+                  <ExternalLink href={`${chain.verifyBaseUrl}/${round.randomnessRound}`} className="self-start text-sm">
+                    See that round on drand.sh
+                  </ExternalLink>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-2">
+                <h2 className="text-base font-semibold tracking-tight">Nothing to check for this draw</h2>
                 <p className="text-sm text-muted">
-                  If all three match, the draw used the number drand published and nobody edited the
-                  winners afterwards.
+                  This draw has no saved random number, so there is no beacon round or winner
+                  shuffle to compare. Skipped and failed draws can land here.
                 </p>
               </div>
-              <CheckRow title="The stored number belongs to its signature" hint="Local check — the number we saved must be the SHA-256 hash of the signature we saved. An edited value fails here." result={shaResult} color={checkColor} label={checkLabel} />
-              <CheckRow title="drand published the same number" hint="External check — fetches that beacon round straight from drand.sh and compares it with what we stored." result={beaconResult} color={checkColor} label={checkLabel} />
-              <CheckRow title="A fresh shuffle produces the same winners" hint="Rebuilds the draw from this wallet list and the stored number, then compares wallet by wallet. A replaced winner fails here." result={deriveResult} color={checkColor} label={checkLabel} />
-              {round.randomnessRound != null && chain && (
-                <a href={`${chain.verifyBaseUrl}/${round.randomnessRound}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-accent transition hover:opacity-80 self-start">
-                  See that round on drand.sh
-                  <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
-                </a>
-              )}
-            </div>
+            )}
 
             <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold tracking-tight">The wallet list this draw used</h2>
+                <h2 className="text-base font-semibold tracking-tight">The wallet list for this draw</h2>
                 {data && (
                   <Chip size="sm" variant="soft" color={data.eligibleSource === "recorded" ? "success" : data.eligibleSource === "inferred" ? "warning" : "default"}>
                     {SOURCE_LABEL[data.eligibleSource] ?? data.eligibleSource}
@@ -497,18 +533,14 @@ export default function RoundPage() {
                 )}
               </div>
               <dl className="grid grid-cols-2 sm:grid-cols-3 gap-6 text-sm">
-                <Field label="Wallets in the pool" value={String(data?.eligible.length ?? 0)} mono />
-                <Field label="Wallets in the snapshot" value={String(data?.snapshotTotalHolders ?? 0)} mono />
+                <Field label="Holders in the pool" value={String(data?.eligible.length ?? 0)} mono />
+                <Field label="Holders in the snapshot" value={String(data?.snapshotTotalHolders ?? 0)} mono />
                 <Field
-                  label="Wallets excluded"
-                  value={String(
-                    (data?.excludedAddresses ?? []).filter(
-                      (a) => a !== data?.platformAddress
-                    ).length
-                  )}
+                  label="Addresses excluded"
+                  value={String((data?.excludedAddresses ?? []).length)}
                   mono
                 />
-                <Field label="Snapshot taken" value={fmtDate(data?.eligibleSnapshotCapturedAt ?? null)} />
+                <Field label="Snapshot time" value={fmtDate(data?.eligibleSnapshotCapturedAt ?? null)} />
               </dl>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-mono uppercase text-muted" htmlFor="elig-check">
@@ -527,18 +559,18 @@ export default function RoundPage() {
                   />
                   {eligQuery.trim() && data && (
                     <Chip size="sm" variant="soft" color={data.eligible.some((e) => e.address.toLowerCase() === eligQuery.trim().toLowerCase()) ? "success" : "default"}>
-                      {data.eligible.some((e) => e.address.toLowerCase() === eligQuery.trim().toLowerCase()) ? "Yes — in this draw" : "No — not in this draw"}
+                      {data.eligible.some((e) => e.address.toLowerCase() === eligQuery.trim().toLowerCase()) ? "Yes, in this draw" : "No, not in this draw"}
                     </Chip>
                   )}
                 </div>
               </div>
               <p className="text-xs text-muted">
-                This is the exact list the draw picked from: every wallet holding at least the minimum
-                balance at snapshot time, with the platform wallet and any exclusion-list accounts
-                (bonding curve, LP pools, program vaults) left out. Excluded wallets never got an
-                index, so the drand seed could not select them — it only reorders this list. You can
-                rebuild it from on-chain balances at that moment if you want to.
-                {data && !data.platformExclusionReproduced && " · The platform-wallet exclusion couldn’t be rebuilt in this browser."}
+                This is the list the draw picks from: every holder at or above the minimum balance in
+                the snapshot, minus the project wallet, the Pump.fun bonding curve, the PumpSwap pool
+                authority and any address on the exclusion list. A draw only shuffles this list, so an
+                excluded wallet cannot be picked. When a draw predates saved lists, the closest earlier
+                snapshot stands in, or the list shows as not available.
+                {data && !data.platformExclusionReproduced && " · The project-wallet exclusion could not be rebuilt here."}
               </p>
               <Link href="/eligibility" className="inline-flex items-center gap-1.5 text-sm text-muted transition hover:text-foreground self-start">
                 Browse current holders
@@ -546,30 +578,34 @@ export default function RoundPage() {
               </Link>
             </div>
 
-            <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-base font-semibold tracking-tight">The exact values we stored</h2>
-                <p className="text-sm text-muted">Copy these if you want to check the draw somewhere else.</p>
+            {(round.randomnessValue || round.randomnessSignature) && (
+              <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <h2 className="text-base font-semibold tracking-tight">The exact values saved with this draw</h2>
+                  <p className="text-sm text-muted">
+                    These are the raw values behind the checks above, so you can reproduce them
+                    elsewhere.
+                  </p>
+                </div>
+                <Mono label="Random number" value={round.randomnessValue} />
+                <Mono label="drand signature" value={round.randomnessSignature} />
               </div>
-              <Mono label="Random number" value={round.randomnessValue} />
-              <Mono label="drand signature" value={round.randomnessSignature} />
-            </div>
+            )}
 
             {chain && (
               <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
-                <h2 className="text-base font-semibold tracking-tight">The beacon behind every draw</h2>
+                <h2 className="text-base font-semibold tracking-tight">The drand beacon</h2>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <Field label="Beacon chain" value={chain.name} mono />
-                  <Field label="Signature type" value={chain.scheme} mono />
+                  <Field label="Signature scheme" value={chain.scheme === "bls-unchained-g1-rfc9380" ? "BLS unchained G1 (RFC 9380)" : chain.scheme} />
                   <Field label="New number every" value={`${chain.period}s`} mono />
-                  <Field label="Live since" value="2023-08-23" mono />
+                  <Field label="Chain live since" value="2023-08-23" mono />
                 </dl>
                 <Mono label="Chain ID" value={chain.hash} />
                 <Mono label="Public key" value={chain.publicKey} />
-                <a href={chain.verifyBaseUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm text-accent transition hover:opacity-80 self-start">
+                <ExternalLink href={chain.verifyBaseUrl} className="self-start text-sm">
                   drand.sh beacon API
-                  <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
-                </a>
+                </ExternalLink>
               </div>
             )}
           </>
@@ -592,7 +628,7 @@ function Mono({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-xs font-mono uppercase text-muted">{label}</span>
-      <code className="block break-all rounded-md bg-default px-3 py-2 text-xs font-mono text-foreground">{value || "—"}</code>
+      <code className="block break-all rounded-md bg-default px-3 py-2 text-xs font-mono text-foreground">{value || "Not saved"}</code>
     </div>
   );
 }
@@ -615,7 +651,9 @@ function CheckRow({
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-semibold">{title}</span>
-        <Chip size="sm" variant="soft" color={color(s)}>{label(s)}</Chip>
+        <Chip size="sm" variant="soft" color={color(s)}>
+          {s === "idle" && result?.detail ? "Not run" : label(s)}
+        </Chip>
       </div>
       <p className="text-xs text-muted">{hint}</p>
       {result?.detail && <p className="text-xs font-mono text-muted break-all">{result.detail}</p>}
