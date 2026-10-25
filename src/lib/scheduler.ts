@@ -141,10 +141,31 @@ export async function startScheduler(): Promise<void> {
     });
   }
 
+  // Telegram group bot. Registered unconditionally (also when the draw cron is
+  // off) because the tick is read-only: it decides from the persisted admin
+  // config whether to post anything. One-minute resolution; the configured
+  // "every N minutes" cadence is enforced against the stored last-send time,
+  // so an interval change applies on the next tick without a restart.
+  let broadcasting = false;
+  cron.schedule("* * * * *", async () => {
+    if (broadcasting) return;
+    broadcasting = true;
+    try {
+      const { runBotTick } = await import("./telegram-bot");
+      await runBotTick();
+    } catch (e) {
+      logEvent("warn", "telegram", `tick failed: ${(e as Error).message}`);
+    } finally {
+      broadcasting = false;
+    }
+  });
+
   const msg =
     `[cron] registered — holders="${cfg.holderSyncCron}",` +
     ` lottery="${cfg.lotteryCron}" (enabled=${lotteryEnabled}),` +
-    ` claim="${cfg.network === "mainnet" ? claimCron : "n/a (devnet)"}"`;
+    ` claim="${cfg.network === "mainnet" ? claimCron : "n/a (devnet)"}",` +
+    ` telegram="* * * * * (DB-configured)"`;
+
   console.log(msg);
   logEvent("info", "cron", msg);
 }

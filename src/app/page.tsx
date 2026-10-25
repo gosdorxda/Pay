@@ -7,7 +7,7 @@ import { TriangleAlert, X } from "lucide-react";
 import { Breadcrumbs, Chip, ProgressBar, Typography } from "@heroui/react";
 import HowItWorksFlow from "@/components/HowItWorksFlow";
 import RecentDraws from "@/components/RecentDraws";
-import { CountUp, Icon, ThemeToggle, Skeleton } from "@/components/ui";
+import { CountUp, ExternalLink, Icon, ThemeToggle, Skeleton } from "@/components/ui";
 import { INFORMATION, NAV } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 import { nextCronOccurrence } from "@/lib/cron-next";
@@ -87,6 +87,19 @@ type RoundsResp = {
   chain: Chain | null;
   rounds: Round[];
   dbError: string | null;
+};
+
+/**
+ * The slice of /api/stats the hero needs: all-time completed draws, the SOL
+ * that actually left the pool and how many payouts went out. Aggregated
+ * server-side over every round, so the numbers stay correct past the
+ * 50-round window /api/rounds returns.
+ */
+type StatsTotals = {
+  draws: number;
+  paidSol: number;
+  /** Winner rows with `status: "sent"` — one per payout actually broadcast. */
+  paidCount: number;
 };
 
 /**
@@ -215,6 +228,10 @@ export default function Home() {
   // min-eligible threshold, lottery cron) + /api/rounds (history + drand chain).
   const [status, setStatus] = useState<StatusResp | null>(null);
   const [rounds, setRounds] = useState<RoundsResp | null>(null);
+  // Hero proof numbers (all-time) + a loaded flag so a failed fetch can settle
+  // on an em dash instead of a skeleton that never resolves.
+  const [stats, setStats] = useState<StatsTotals | null>(null);
+  const [statsLoaded, setStatsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   // 1s ticker so the "next draw" countdown in the hero updates live.
   const [now, setNow] = useState(() => Date.now());
@@ -229,6 +246,28 @@ export default function Home() {
         setRounds(r as RoundsResp);
       } catch {
         /* leave null — UI shows placeholders */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Hero proof numbers — all-time draws + SOL paid. /api/stats already
+  // aggregates every round (and is cached 30 s server-side), so this is one
+  // extra request on load rather than folding totals into the 5 s status poll;
+  // the numbers only move when a draw settles.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/stats", { cache: "no-store" }).then((x) => x.json());
+        if (cancelled) return;
+        setStats((r?.totals as StatsTotals | null) ?? null);
+      } catch {
+        /* leave null — the hero stats fall back to an em dash */
+      } finally {
+        if (!cancelled) setStatsLoaded(true);
       }
     })();
     return () => {
@@ -482,9 +521,10 @@ export default function Home() {
         </header>
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
-        {/* Hero — pitch only: title, description and CTAs on one surface.
-            The live numbers sit in the tile strip below, so the fold reads
-            headline → status tiles → draws. */}
+        {/* Hero — pitch + all-time proof numbers + CTAs on one surface. Only
+            lifetime totals live here (draws run, SOL paid); the live per-round
+            numbers stay in the tile strip below, so the fold reads
+            headline → proof → status tiles → draws. */}
         <section className="pt-5 pb-5 sm:pt-10 sm:pb-6">
           <div className="relative overflow-hidden rounded-lg border border-(--border) bg-surface">
             {/* Soft accent halo — token-based, so it adapts to light/dark. */}
@@ -503,14 +543,75 @@ export default function Home() {
                 </Typography>
               </div>
 
-              <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-                <Link href="/draws" className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90">
+              {/* Proof numbers above the CTAs — has it run, did payouts go out,
+                  how much SOL actually left the pool. Sourced from /api/stats
+                  totals, in that order so the story reads left to right. */}
+              <dl className="flex flex-wrap items-stretch gap-y-4">
+                <div className="flex flex-col gap-1 pr-2.5 sm:pr-5">
+                  <dt className="text-[11px] leading-4 tracking-tight text-muted sm:text-xs sm:tracking-normal">
+                    Draws completed
+                  </dt>
+                  <dd className="font-mono text-xl font-semibold leading-none tracking-tight tabular-nums">
+                    {!statsLoaded ? (
+                      <Skeleton className="h-5 w-12" />
+                    ) : stats ? (
+                      <CountUp value={stats.draws} />
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
+                </div>
+                <div className="flex flex-col gap-1 border-l border-(--border) pl-2.5 pr-2.5 sm:pl-5 sm:pr-5">
+                  <dt className="text-[11px] leading-4 tracking-tight text-muted sm:text-xs sm:tracking-normal">
+                    Winners paid
+                  </dt>
+                  <dd className="font-mono text-xl font-semibold leading-none tracking-tight tabular-nums">
+                    {!statsLoaded ? (
+                      <Skeleton className="h-5 w-12" />
+                    ) : stats ? (
+                      <CountUp value={stats.paidCount} />
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
+                </div>
+                {/* All three stay on one line even at 360 px: the labels drop to
+                    11 px + tracking-tight below sm (12 px is what forces the
+                    third cell to wrap) so the vertical rules hold in both. */}
+                <div className="flex flex-col gap-1 border-l border-(--border) pl-2.5 sm:pl-5">
+                  <dt className="text-[11px] leading-4 tracking-tight text-muted sm:text-xs sm:tracking-normal">
+                    Paid out to holders
+                  </dt>
+                  <dd className="flex items-baseline gap-1.5 font-mono text-xl font-semibold leading-none tracking-tight tabular-nums">
+                    {!statsLoaded ? (
+                      <Skeleton className="h-5 w-20" />
+                    ) : stats ? (
+                      <>
+                        {/* Same 4-dp SOL precision as the pool tile, so a
+                            small running total never collapses to "<0.01". */}
+                        <CountUp value={stats.paidSol} format={(n) => fmtSolNum(n)} />
+                        <span className="text-xs font-normal text-muted">SOL</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                <Link href="/draws" className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 sm:px-5">
                   View draws
                   <Icon name="arrow-right" className="h-4 w-4" />
                 </Link>
-                <a href="#how" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-(--border) px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-default/40">
+                <a href="#how" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-(--border) px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-default/40 sm:px-5">
                   How draws work
                 </a>
+                {/* Source of the randomness, not a third CTA: plain muted text
+                    at label size, so it trails the buttons without competing. */}
+                <ExternalLink href="https://drand.sh" className="text-xs">
+                  drand.sh
+                </ExternalLink>
               </div>
             </div>
           </div>

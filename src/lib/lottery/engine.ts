@@ -13,6 +13,7 @@ import { requestRandomness } from "../solana/randomness";
 import { lamportsToSol } from "../format";
 import { logEvent } from "../log-buffer";
 import { notifyWinners } from "../notifications";
+import { notifyDrawResult } from "../telegram-bot";
 import { getDrawExclusions } from "../exclusions";
 
 export interface EligibleHolder {
@@ -918,6 +919,28 @@ export async function runLotteryRound(
         "error",
         "notify",
         `round #${roundNumber}: notify failed — ${(notifyErr as Error).message}`
+      );
+    }
+
+    // Group bot — one announcement to the configured Telegram group. Same
+    // best-effort contract as the winner notifications above: the round is
+    // already persisted as completed, so a bot failure must never break the
+    // draw. `notifyDrawResult` no-ops unless the bot is enabled with draw
+    // announcements on, and de-dupes by round number.
+    try {
+      await notifyDrawResult({
+        roundNumber,
+        prizePoolLamports: effectivePool,
+        eligibleCount: eligible.length,
+        winners: amounts,
+        payoutTx,
+        randomnessVerified: rnd.verified,
+      });
+    } catch (botErr) {
+      logEvent(
+        "error",
+        "telegram",
+        `round #${roundNumber}: group announcement failed — ${(botErr as Error).message}`
       );
     }
 

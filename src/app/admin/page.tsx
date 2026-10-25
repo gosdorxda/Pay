@@ -37,6 +37,7 @@ import { PalettePanel } from "@/components/admin/PalettePanel";
 import { BuybackPanel } from "@/components/admin/BuybackPanel";
 import { CreatorFeesCard } from "@/components/admin/CreatorFeesCard";
 import { ExclusionsCard } from "@/components/admin/ExclusionsCard";
+import { TelegramBotPanel } from "@/components/admin/TelegramBotPanel";
 import { ExclusionLabelChip } from "@/components/ExclusionLabelChip";
 import { nextCronOccurrence } from "@/lib/cron-next";
 import {
@@ -1444,6 +1445,10 @@ export default function AdminPage() {
                 Buyback
                 <Tabs.Indicator />
               </Tabs.Tab>
+              <Tabs.Tab id="telegram">
+                Telegram Bot
+                <Tabs.Indicator />
+              </Tabs.Tab>
               <Tabs.Tab id="logs">
                 System Log
                 <Tabs.Indicator />
@@ -1933,6 +1938,9 @@ export default function AdminPage() {
           </Tabs.Panel>
           <Tabs.Panel id="buyback" className="pt-4">
             <BuybackPanel />
+          </Tabs.Panel>
+          <Tabs.Panel id="telegram" className="pt-4">
+            <TelegramBotPanel />
           </Tabs.Panel>
           <Tabs.Panel id="logs" className="pt-4">
         <Card>
