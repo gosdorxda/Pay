@@ -469,7 +469,8 @@ export default function Home() {
               <Icon name="menu" />
             </button>
             <div className="min-w-0 flex-1">
-              <Breadcrumbs isDisabled>
+              {/* 13px/18px: one notch below the text-sm default so the trail sits quieter than the page title. */}
+              <Breadcrumbs isDisabled className="[&_.breadcrumbs\_\_link]:text-[13px]! [&_.breadcrumbs\_\_link]:leading-[18px]!">
                 <Breadcrumbs.Item href="/">{brandName}</Breadcrumbs.Item>
                 <Breadcrumbs.Item>Home</Breadcrumbs.Item>
               </Breadcrumbs>

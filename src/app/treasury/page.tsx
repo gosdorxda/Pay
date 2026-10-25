@@ -486,36 +486,44 @@ function TxTable({
 
   return (
     <div className="border-t border-(--border)">
-      <div className="table-bordered table-compact overflow-x-auto">
+      <div className="table-bordered table-compact">
         <Table variant="secondary">
-          <TableContent aria-label={aria} className="font-mono">
-            <TableHeader>
-              <TableColumn isRowHeader>ACTIVITY</TableColumn>
-              <TableColumn style={{ textAlign: "right" }}>AMOUNT</TableColumn>
-              <TableColumn style={{ textAlign: "right" }}>TX</TableColumn>
-            </TableHeader>
-            <TableBody>
-              {visible.map((t) => (
-                <TableRow key={`${t.signature}-${t.label}`}>
-                  <TableCell className="whitespace-nowrap">
-                    <span className="block text-foreground">{t.label}</span>
-                    <span className="block text-[10px] text-muted">{fmtTxDate(t.at)}</span>
-                  </TableCell>
-                  <TableCell
-                    className={`text-right tabular-nums whitespace-nowrap ${
-                      t.amountSol >= 0 ? "text-success" : "text-foreground"
-                    }`}
-                  >
-                    {t.amountSol >= 0 ? "+" : "−"}
-                    {fmtSolPrecise(Math.abs(t.amountSol))}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <TxLink signature={t.signature} net={net} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </TableContent>
+          {/* HeroUI clips inside .table-root, so the pan happens in a scroll
+              container just outside the <table>; narrow cards keep every column
+              legible instead of cutting off the TX link. */}
+          <Table.ScrollContainer
+            tabIndex={0}
+            className="overscroll-x-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+          >
+            <TableContent aria-label={aria} className="min-w-[21rem] font-mono">
+              <TableHeader>
+                <TableColumn isRowHeader>ACTIVITY</TableColumn>
+                <TableColumn style={{ textAlign: "right" }}>AMOUNT</TableColumn>
+                <TableColumn style={{ textAlign: "right" }}>TX</TableColumn>
+              </TableHeader>
+              <TableBody>
+                {visible.map((t) => (
+                  <TableRow key={`${t.signature}-${t.label}`}>
+                    <TableCell className="whitespace-nowrap">
+                      <span className="block text-foreground">{t.label}</span>
+                      <span className="block text-[10px] text-muted">{fmtTxDate(t.at)}</span>
+                    </TableCell>
+                    <TableCell
+                      className={`text-right tabular-nums whitespace-nowrap ${
+                        t.amountSol >= 0 ? "text-success" : "text-foreground"
+                      }`}
+                    >
+                      {t.amountSol >= 0 ? "+" : "−"}
+                      {fmtSolPrecise(Math.abs(t.amountSol))}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <TxLink signature={t.signature} net={net} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </TableContent>
+          </Table.ScrollContainer>
         </Table>
       </div>
 
@@ -638,52 +646,57 @@ function BuybackCard({
             : "No buyback recorded yet."}
         </p>
       ) : (
-        <div className="table-bordered table-compact overflow-x-auto">
+        <div className="table-bordered table-compact">
           <Table variant="secondary">
-            <TableContent
-              aria-label="Buyback and burn transactions"
-              className="font-mono"
+            <Table.ScrollContainer
+              tabIndex={0}
+              className="overscroll-x-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
             >
-              <TableHeader>
-                <TableColumn isRowHeader>ACTIVITY</TableColumn>
-                <TableColumn style={{ textAlign: "right" }}>SPENT</TableColumn>
-                <TableColumn style={{ textAlign: "right" }}>TOKENS</TableColumn>
-                <TableColumn style={{ textAlign: "right" }}>TX</TableColumn>
-              </TableHeader>
-              <TableBody>
-                {txs.map((t) => (
-                  <TableRow
-                    key={t.signature}
-                    className={t.kind === "buy" ? "tx-row--buy" : "tx-row--burn"}
-                  >
-                    <TableCell className="whitespace-nowrap">
-                      <span className="block text-foreground">
-                        {t.kind === "buy" ? "Buyback" : "Burn"}
-                      </span>
-                      <span className="block text-[10px] text-muted">
-                        {fmtTxDate(t.at)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums whitespace-nowrap text-foreground">
-                      {t.kind === "buy" && t.sol != null
-                        ? `−${fmtSolPrecise(t.sol)}`
-                        : "—"}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right tabular-nums whitespace-nowrap ${
-                        t.kind === "buy" ? "text-success" : "text-foreground"
-                      }`}
+              <TableContent
+                aria-label="Buyback and burn transactions"
+                className="min-w-[23rem] font-mono"
+              >
+                <TableHeader>
+                  <TableColumn isRowHeader>ACTIVITY</TableColumn>
+                  <TableColumn style={{ textAlign: "right" }}>SPENT</TableColumn>
+                  <TableColumn style={{ textAlign: "right" }}>TOKENS</TableColumn>
+                  <TableColumn style={{ textAlign: "right" }}>TX</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {txs.map((t) => (
+                    <TableRow
+                      key={t.signature}
+                      className={t.kind === "buy" ? "tx-row--buy" : "tx-row--burn"}
                     >
-                      {t.kind === "buy" ? "+" : "−"}
-                      {t.tokens.toLocaleString("en-US")}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <TxLink signature={t.signature} net={net} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </TableContent>
+                      <TableCell className="whitespace-nowrap">
+                        <span className="block text-foreground">
+                          {t.kind === "buy" ? "Buyback" : "Burn"}
+                        </span>
+                        <span className="block text-[10px] text-muted">
+                          {fmtTxDate(t.at)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums whitespace-nowrap text-foreground">
+                        {t.kind === "buy" && t.sol != null
+                          ? `−${fmtSolPrecise(t.sol)}`
+                          : "—"}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right tabular-nums whitespace-nowrap ${
+                          t.kind === "buy" ? "text-success" : "text-foreground"
+                        }`}
+                      >
+                        {t.kind === "buy" ? "+" : "−"}
+                        {t.tokens.toLocaleString("en-US")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <TxLink signature={t.signature} net={net} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </TableContent>
+            </Table.ScrollContainer>
         </Table>
       </div>
       )}

@@ -181,7 +181,8 @@ export function AppShell({
             >
               <Icon name="menu" />
             </button>
-            <Breadcrumbs isDisabled>
+            {/* 13px/18px: one notch below the text-sm default so the trail sits quieter than the page title. */}
+            <Breadcrumbs isDisabled className="[&_.breadcrumbs\_\_link]:text-[13px]! [&_.breadcrumbs\_\_link]:leading-[18px]!">
               <Breadcrumbs.Item href="/">{brandName}</Breadcrumbs.Item>
               <Breadcrumbs.Item>{title}</Breadcrumbs.Item>
             </Breadcrumbs>

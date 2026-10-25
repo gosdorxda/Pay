@@ -744,52 +744,59 @@ function Leaderboard({
       ) : (
         <div className="table-bordered rounded-lg border border-(--border) overflow-hidden bg-surface">
           <Table variant="secondary">
-            <TableContent
-              aria-label="Wallets that have won the most"
-              className="text-xs font-mono"
+            {/* Five columns need ~520px before "TOTAL WON" and the wallet links
+                start stacking lines; below that the table pans inside its card. */}
+            <Table.ScrollContainer
+              tabIndex={0}
+              className="overscroll-x-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
             >
-              <TableHeader>
-                <TableColumn className="w-12">#</TableColumn>
-                <TableColumn isRowHeader>WALLET</TableColumn>
-                <TableColumn style={{ textAlign: "right" }}>TOTAL WON</TableColumn>
-                <TableColumn style={{ textAlign: "center" }}>WINS</TableColumn>
-                <TableColumn>LAST WIN</TableColumn>
-              </TableHeader>
-              <TableBody>
-                {rows.map((w, i) => (
-                  <TableRow key={w.address}>
-                    <TableCell className="text-muted font-mono">{i + 1}</TableCell>
-                    <TableCell>
-                      <a
-                        href={explorerUrl(w.address, "address", net)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 font-mono text-foreground hover:text-accent transition"
-                      >
-                        {shortAddress(w.address, 6, 6)}
-                        <Icon name="arrow-up-right" className="h-3.5 w-3.5 text-muted" />
-                      </a>
-                    </TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
-                      {fmtSolHuman(w.totalSol)}
-                    </TableCell>
-                    <TableCell className="text-center font-mono tabular-nums">{w.wins}</TableCell>
-                    <TableCell>
-                      {w.lastRound ? (
+              <TableContent
+                aria-label="Wallets that have won the most"
+                className="min-w-[32rem] text-xs font-mono"
+              >
+                <TableHeader>
+                  <TableColumn className="w-12">#</TableColumn>
+                  <TableColumn isRowHeader>WALLET</TableColumn>
+                  <TableColumn style={{ textAlign: "right" }}>TOTAL WON</TableColumn>
+                  <TableColumn style={{ textAlign: "center" }}>WINS</TableColumn>
+                  <TableColumn>LAST WIN</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((w, i) => (
+                    <TableRow key={w.address}>
+                      <TableCell className="text-muted font-mono">{i + 1}</TableCell>
+                      <TableCell>
                         <a
-                          href={`/rounds/${w.lastRound}`}
-                          className="font-mono text-muted hover:text-accent transition"
+                          href={explorerUrl(w.address, "address", net)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 font-mono text-foreground hover:text-accent transition"
                         >
-                          Draw {w.lastRound}
+                          {shortAddress(w.address, 6, 6)}
+                          <Icon name="arrow-up-right" className="h-3.5 w-3.5 text-muted" />
                         </a>
-                      ) : (
-                        <span className="font-mono text-muted">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </TableContent>
+                      </TableCell>
+                      <TableCell className="text-right font-mono tabular-nums">
+                        {fmtSolHuman(w.totalSol)}
+                      </TableCell>
+                      <TableCell className="text-center font-mono tabular-nums">{w.wins}</TableCell>
+                      <TableCell>
+                        {w.lastRound ? (
+                          <a
+                            href={`/rounds/${w.lastRound}`}
+                            className="font-mono text-muted hover:text-accent transition"
+                          >
+                            Draw {w.lastRound}
+                          </a>
+                        ) : (
+                          <span className="font-mono text-muted">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </TableContent>
+            </Table.ScrollContainer>
           </Table>
         </div>
       )}

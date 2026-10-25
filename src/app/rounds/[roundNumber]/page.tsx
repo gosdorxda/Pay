@@ -104,9 +104,12 @@ function roundNote(round: Round): string {
       return "The prize pool didn’t reach the minimum needed for a draw.";
     }
     if (s.includes("eligible")) {
-      return "No wallet met the minimum balance for this draw.";
+      return "No wallet was eligible for this draw, so there was nobody to pick.";
     }
-    return "The prize pool was empty, so this draw picked no winners.";
+    if (s.includes("reserve")) {
+      return "The balance sat at or below the reserve, so this draw had no prize pool and picked no winners.";
+    }
+    return "This draw stopped before it picked any winners.";
   }
   if (s.includes("failed on-chain") || s.includes("insufficientfunds")) {
     return "The payout transaction failed on-chain, so this draw didn’t pay out.";
@@ -119,7 +122,6 @@ function roundNote(round: Round): string {
   }
   return "This draw closed without winners.";
 }
-
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "Not recorded";
@@ -305,11 +307,17 @@ export default function RoundPage() {
     const eligible = data?.eligible ?? [];
     const source = data?.eligibleSource ?? "unavailable";
     const platformOk = data?.platformExclusionReproduced ?? false;
-    if (source === "unavailable" || eligible.length === 0) {
+    if (source === "unavailable") {
       setDeriveResult({
         state: "idle",
         detail:
           "The holder snapshot for this draw is not available, so the winners cannot be rebuilt here.",
+      });
+    } else if (eligible.length === 0) {
+      setDeriveResult({
+        state: "idle",
+        detail:
+          "This draw saved no eligible holders, so there is nothing to rebuild.",
       });
     } else {
       setDeriveResult({
@@ -333,12 +341,14 @@ export default function RoundPage() {
           if (mismatches === 0 && reproduced.length === stored.length) {
             setDeriveResult({
               state: "pass",
-              detail: `Re-derived all ${stored.length} winners from the saved wallet list and the number: same addresses, same order${caveats}`,
+              detail: `Re-derived ${stored.length} ${stored.length === 1 ? "winner" : "winners"} from the saved wallet list and the number: same addresses, same order${caveats}`,
             });
           } else {
             setDeriveResult({
               state: "fail",
-              detail: `Re-derived winners do not match the saved ones: ${mismatches} rank(s) differ${
+              detail: `Re-derived winners do not match the saved ones: ${mismatches} ${
+                mismatches === 1 ? "rank differs" : "ranks differ"
+              }${
                 source === "inferred"
                   ? " · the snapshot was not saved with this draw, which can explain a mismatch"
                   : ""
@@ -394,8 +404,9 @@ export default function RoundPage() {
             )}
           </div>
           <Typography type="body-sm" color="muted" className="mt-1.5">
-            Who won, the random number that picked them, and the checks that show the winners follow
-            from that number and the wallet list saved with the draw.
+            {round && !round.randomnessValue
+              ? "What stopped this draw, and what was saved with it."
+              : "Who won, the random number that picked them, and the checks that let you confirm both against the values saved with the draw."}
           </Typography>
         </div>
 
@@ -411,7 +422,7 @@ export default function RoundPage() {
             <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
               <Skeleton className="h-5 w-32" />
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-                <SkeletonStat label="Closed" />
+                <SkeletonStat label="Closed at" />
                 <SkeletonStat label="Prize pool" />
                 <SkeletonStat label="Eligible holders" />
                 <SkeletonStat label="Beacon round" />
@@ -429,14 +440,14 @@ export default function RoundPage() {
             <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
               <h2 className="text-base font-semibold tracking-tight">Draw summary</h2>
               <dl className="grid grid-cols-2 sm:grid-cols-4 gap-6 text-sm">
-                <Field label="Closed" value={fmtDate(round.completedAt)} />
+                <Field label="Closed at" value={fmtDate(round.completedAt)} />
                 <Field label="Prize pool" value={fmtSolHuman(round.prizePoolSol)} mono />
                 <Field label="Eligible holders" value={String(round.eligibleCount)} mono />
                 <Field label="Beacon round" value={round.randomnessRound != null ? String(round.randomnessRound) : "Not recorded"} mono />
               </dl>
               <p className="text-xs text-muted">
-                Prize pool is the amount this draw had to pay out. Winner payouts are net of any
-                platform fee and rounding.
+                Prize pool is the amount available to pay winners in this draw. Winner payouts are net
+                of any platform fee and rounding.
               </p>
               {round.error && (
                 <p className={round.status === "failed" ? "text-sm text-danger" : "text-sm text-muted"} title={round.error}>
@@ -452,44 +463,51 @@ export default function RoundPage() {
             ) : (
               <div className="table-bordered rounded-lg border border-(--border) overflow-hidden bg-surface">
                 <Table variant="secondary">
-                  <TableContent aria-label="Draw winners" className="text-xs font-mono">
-                    <TableHeader>
-                      <TableColumn className="w-12">RANK</TableColumn>
-                      <TableColumn isRowHeader>WINNER</TableColumn>
-                      <TableColumn style={{ textAlign: "right" }}>PAYOUT</TableColumn>
-                      <TableColumn style={{ textAlign: "center" }}>STATUS</TableColumn>
-                      <TableColumn>TRANSACTION</TableColumn>
-                    </TableHeader>
-                    <TableBody>
-                      {round.winners.map((w) => (
-                        <TableRow key={w.rank}>
-                          <TableCell className="text-muted font-mono">{w.rank}</TableCell>
-                          <TableCell>
-                            <a href={explorerUrl(w.address, "address", net)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-muted transition-colors hover:text-foreground hover:underline">
-                              {shortAddress(w.address, 6, 6)}
-                              <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
-                            </a>
-                          </TableCell>
-                          <TableCell className="text-right font-mono tabular-nums">{fmtSolHuman(w.amountSol)}</TableCell>
-                          <TableCell className="text-center">
-                            <Chip size="sm" variant="soft" color={w.status === "sent" ? "success" : w.status === "failed" ? "danger" : "warning"}>
-                              {statusLabel(w.status)}
-                            </Chip>
-                          </TableCell>
-                          <TableCell>
-                            {w.payoutTx ? (
-                              <a href={explorerUrl(w.payoutTx, "tx", net)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-muted transition-colors hover:text-foreground hover:underline">
-                                {shortAddress(w.payoutTx, 6, 6)}
+                  {/* Five columns need ~540px; on a phone the table pans inside
+                      its card rather than clipping the transaction column. */}
+                  <Table.ScrollContainer
+                    tabIndex={0}
+                    className="overscroll-x-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                  >
+                    <TableContent aria-label="Draw winners" className="min-w-[34rem] text-xs font-mono">
+                      <TableHeader>
+                        <TableColumn className="w-12">RANK</TableColumn>
+                        <TableColumn isRowHeader>WINNER</TableColumn>
+                        <TableColumn style={{ textAlign: "right" }}>PAYOUT</TableColumn>
+                        <TableColumn style={{ textAlign: "center" }}>STATUS</TableColumn>
+                        <TableColumn>TRANSACTION</TableColumn>
+                      </TableHeader>
+                      <TableBody>
+                        {round.winners.map((w) => (
+                          <TableRow key={w.rank}>
+                            <TableCell className="text-muted font-mono">{w.rank}</TableCell>
+                            <TableCell>
+                              <a href={explorerUrl(w.address, "address", net)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-muted transition-colors hover:text-foreground hover:underline">
+                                {shortAddress(w.address, 6, 6)}
                                 <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
                               </a>
-                            ) : (
-                              <span className="text-muted">None</span>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </TableContent>
+                            </TableCell>
+                            <TableCell className="text-right font-mono tabular-nums">{fmtSolHuman(w.amountSol)}</TableCell>
+                            <TableCell className="text-center">
+                              <Chip size="sm" variant="soft" color={w.status === "sent" ? "success" : w.status === "failed" ? "danger" : "warning"}>
+                                {statusLabel(w.status)}
+                              </Chip>
+                            </TableCell>
+                            <TableCell>
+                              {w.payoutTx ? (
+                                <a href={explorerUrl(w.payoutTx, "tx", net)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-muted transition-colors hover:text-foreground hover:underline">
+                                  {shortAddress(w.payoutTx, 6, 6)}
+                                  <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
+                                </a>
+                              ) : (
+                                <span className="text-muted">None</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </TableContent>
+                  </Table.ScrollContainer>
                 </Table>
               </div>
             )}
@@ -497,19 +515,19 @@ export default function RoundPage() {
             {round.randomnessValue && round.randomnessSignature ? (
               <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
-                  <h2 className="text-base font-semibold tracking-tight">Three checks that run here</h2>
+                  <h2 className="text-base font-semibold tracking-tight">Three checks on this page</h2>
                   <p className="text-sm text-muted">
                     When all three pass, the number is the one drand published and the winners follow
-                    from that number and the saved wallet list. They cannot show that the list holds
-                    every holder.
+                    from that number and the saved wallet list. The checks cannot show that the list
+                    holds every holder.
                   </p>
                 </div>
-                <CheckRow title="The saved number belongs to its signature" hint="Local check: the number must be the SHA-256 hash of the signature saved with it. Editing one without the other fails here; the next check is what ties the signature to drand." result={shaResult} color={checkColor} label={checkLabel} />
+                <CheckRow title="The saved number is the hash of its signature" hint="Local check: the number must be the SHA-256 hash of the signature saved with it. Editing one without the other fails here; the next check is what ties the signature to drand." result={shaResult} color={checkColor} label={checkLabel} />
                 <CheckRow title="drand published the same number" hint="External check: fetches that beacon round from drand.sh and compares the number and signature with the values saved here." result={beaconResult} color={checkColor} label={checkLabel} />
                 <CheckRow title="A fresh shuffle produces the same winners" hint="Rebuilds the winners from the saved wallet list and the saved number, then compares them rank by rank. It shows the winners follow from that list, not that the list holds every holder." result={deriveResult} color={checkColor} label={checkLabel} />
                 {round.randomnessRound != null && chain && (
                   <ExternalLink href={`${chain.verifyBaseUrl}/${round.randomnessRound}`} className="self-start text-sm">
-                    See that round on drand.sh
+                    Open beacon round {round.randomnessRound} on drand.sh
                   </ExternalLink>
                 )}
               </div>
@@ -533,10 +551,10 @@ export default function RoundPage() {
                 )}
               </div>
               <dl className="grid grid-cols-2 sm:grid-cols-3 gap-6 text-sm">
-                <Field label="Holders in the pool" value={String(data?.eligible.length ?? 0)} mono />
+                <Field label="Holders in the list" value={String(data?.eligible.length ?? 0)} mono />
                 <Field label="Holders in the snapshot" value={String(data?.snapshotTotalHolders ?? 0)} mono />
                 <Field
-                  label="Addresses excluded"
+                  label="Addresses on the exclusion list"
                   value={String((data?.excludedAddresses ?? []).length)}
                   mono
                 />
@@ -544,7 +562,7 @@ export default function RoundPage() {
               </dl>
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-mono uppercase text-muted" htmlFor="elig-check">
-                  Was this wallet in draw #{round.roundNumber}?
+                  Was this wallet eligible for draw #{round.roundNumber}?
                 </label>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <input
@@ -559,7 +577,7 @@ export default function RoundPage() {
                   />
                   {eligQuery.trim() && data && (
                     <Chip size="sm" variant="soft" color={data.eligible.some((e) => e.address.toLowerCase() === eligQuery.trim().toLowerCase()) ? "success" : "default"}>
-                      {data.eligible.some((e) => e.address.toLowerCase() === eligQuery.trim().toLowerCase()) ? "Yes, in this draw" : "No, not in this draw"}
+                      {data.eligible.some((e) => e.address.toLowerCase() === eligQuery.trim().toLowerCase()) ? "Yes, eligible" : "No, not eligible"}
                     </Chip>
                   )}
                 </div>
@@ -598,8 +616,8 @@ export default function RoundPage() {
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <Field label="Beacon chain" value={chain.name} mono />
                   <Field label="Signature scheme" value={chain.scheme === "bls-unchained-g1-rfc9380" ? "BLS unchained G1 (RFC 9380)" : chain.scheme} />
-                  <Field label="New number every" value={`${chain.period}s`} mono />
-                  <Field label="Chain live since" value="2023-08-23" mono />
+                  <Field label="New number every" value={chain.period === 1 ? "1 second" : `${chain.period} seconds`} />
+                  <Field label="Chain live since" value="Aug 23, 2023" />
                 </dl>
                 <Mono label="Chain ID" value={chain.hash} />
                 <Mono label="Public key" value={chain.publicKey} />

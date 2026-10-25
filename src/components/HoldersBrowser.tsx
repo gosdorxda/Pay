@@ -191,71 +191,80 @@ export function HoldersBrowser({
       ) : data && data.holders.length > 0 ? (
         <div className="table-bordered rounded-lg border border-(--border) overflow-hidden bg-surface">
           <Table variant="secondary">
-            <TableContent aria-label="Token holders" className="text-xs font-mono">
-              <TableHeader>
-                <TableColumn className="w-12">#</TableColumn>
-                <TableColumn isRowHeader>WALLET</TableColumn>
-                <TableColumn style={{ textAlign: "right" }}>BALANCE</TableColumn>
-                <TableColumn style={{ textAlign: "center" }}>STATUS</TableColumn>
-              </TableHeader>
-              <TableBody>
-                {data.holders.map((h, i) => {
-                  const rank = (data.page - 1) * data.pageSize + i + 1;
-                  return (
-                    <TableRow key={h.address}>
-                      <TableCell className="text-muted font-mono">{rank}</TableCell>
-                      <TableCell>
-                        <a href={explorer(h.address)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-foreground hover:text-accent transition">
-                          {shortAddr(h.address)}
-                          <Icon name="arrow-up-right" className="h-3.5 w-3.5 text-muted" />
-                        </a>
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">{h.amountHuman}</TableCell>
-                      <TableCell className="text-center">
-                        {h.eligible ? (
-                          <Chip
-                            size="sm"
-                            variant="soft"
-                            color="success"
-                            className="gap-1"
-                          >
-                            <CircleCheckBig
-                              className="h-3 w-3 shrink-0"
-                              aria-hidden
-                            />
-                            Eligible
-                          </Chip>
-                        ) : h.platform ? (
-                          <Chip size="sm" variant="soft" color="default">
-                            Platform
-                          </Chip>
-                        ) : h.excluded ? (
-                          <span className="inline-flex flex-col items-center gap-1">
-                            {h.excludedBy === "venue" ? (
-                              <VenueChip
-                                text="Venue"
-                                title={`${h.excludedLabel ?? "Venue account"}, holds the token as liquidity, so it is not in the draw.`}
+            {/* Phones: the four columns need ~480px before the address and the
+                status chip start wrapping mid-word. Below that the table pans
+                sideways inside its own card instead of being clipped by
+                .table-root's overflow: clip. */}
+            <Table.ScrollContainer
+              tabIndex={0}
+              className="overscroll-x-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+            >
+              <TableContent aria-label="Token holders" className="min-w-[30rem] text-xs font-mono">
+                <TableHeader>
+                  <TableColumn className="w-12">#</TableColumn>
+                  <TableColumn isRowHeader>WALLET</TableColumn>
+                  <TableColumn style={{ textAlign: "right" }}>BALANCE</TableColumn>
+                  <TableColumn style={{ textAlign: "center" }}>STATUS</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {data.holders.map((h, i) => {
+                    const rank = (data.page - 1) * data.pageSize + i + 1;
+                    return (
+                      <TableRow key={h.address}>
+                        <TableCell className="text-muted font-mono">{rank}</TableCell>
+                        <TableCell>
+                          <a href={explorer(h.address)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-mono text-foreground hover:text-accent transition">
+                            {shortAddr(h.address)}
+                            <Icon name="arrow-up-right" className="h-3.5 w-3.5 text-muted" />
+                          </a>
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums">{h.amountHuman}</TableCell>
+                        <TableCell className="text-center">
+                          {h.eligible ? (
+                            <Chip
+                              size="sm"
+                              variant="soft"
+                              color="success"
+                              className="gap-1"
+                            >
+                              <CircleCheckBig
+                                className="h-3 w-3 shrink-0"
+                                aria-hidden
                               />
-                            ) : (
-                              <ExclusionLabelChip label={h.excludedLabel} />
-                            )}
-                            {h.excludedBy === "venue" && h.excludedLabel && (
-                              <span className="max-w-[160px] text-[10px] leading-tight text-muted">
-                                {h.excludedLabel}
-                              </span>
-                            )}
-                          </span>
-                        ) : (
-                          <Chip size="sm" variant="soft" color="default">
-                            Below minimum
-                          </Chip>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </TableContent>
+                              Eligible
+                            </Chip>
+                          ) : h.platform ? (
+                            <Chip size="sm" variant="soft" color="default">
+                              Platform
+                            </Chip>
+                          ) : h.excluded ? (
+                            <span className="inline-flex flex-col items-center gap-1">
+                              {h.excludedBy === "venue" ? (
+                                <VenueChip
+                                  text="Venue"
+                                  title={`${h.excludedLabel ?? "Venue account"}, holds the token as liquidity, so it is not in the draw.`}
+                                />
+                              ) : (
+                                <ExclusionLabelChip label={h.excludedLabel} />
+                              )}
+                              {h.excludedBy === "venue" && h.excludedLabel && (
+                                <span className="max-w-[160px] text-[10px] leading-tight text-muted">
+                                  {h.excludedLabel}
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <Chip size="sm" variant="soft" color="default">
+                              Below minimum
+                            </Chip>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </TableContent>
+            </Table.ScrollContainer>
           </Table>
         </div>
       ) : (

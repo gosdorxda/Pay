@@ -13,8 +13,8 @@ export async function generateMetadata({
   return {
     title,
     description: valid
-      ? `What happened in draw #${num}: the winners, the random number behind them, and the checks anyone can re-run.`
-      : "A draw from the lottery: what happened, the random number behind it, and the checks anyone can re-run.",
+      ? `What happened in draw #${num}: the result, the values saved with it, and the checks anyone can re-run.`
+      : "A draw from the lottery: what happened, what was saved, and the checks anyone can re-run.",
   };
 }
 
