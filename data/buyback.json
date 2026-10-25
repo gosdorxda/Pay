@@ -1,0 +1,35 @@
+{
+  "feeSharePct": 70,
+  "supply": 100000000,
+  "nextRunAt": "",
+  "updatedAt": "2026-10-22T17:55:54.333Z",
+  "txs": [
+    {
+      "signature": "3ZNMVWgCuKHEQymsCaefVa18vgUqP4s5pfKgeHrJ1XmbaJUHJYSXCgxJZ6J14kdScXEmX7StjcpJxYNdsmqtK9T2",
+      "at": "2026-10-22T17:55:00.000Z",
+      "kind": "burn",
+      "tokens": 3000000
+    },
+    {
+      "signature": "5JF3g3eEi4AfcfYKTffYSXf93UvorwuUshLpEerDpRq2SgfRTb5Wj2upXHwNEtCGWBTEo8jroqrWXT3JgyJLUi8X",
+      "at": "2026-10-22T17:51:00.000Z",
+      "kind": "buy",
+      "sol": 0.333,
+      "tokens": 1352333
+    },
+    {
+      "signature": "2958XNEQjCV6CPmPFchCLodfrtZVqASTDReawrR5unfePBt3C6KyxukTgJExrmE9Y3f7QGRJ2pnCM2oTDDxfWc98",
+      "at": "2026-10-22T17:49:00.000Z",
+      "kind": "buy",
+      "sol": 1.956,
+      "tokens": 2300000
+    },
+    {
+      "signature": "2n8MRbJXP1zT4NiY26jkVjmcRV63efWzewFF5ohEHs3596ifeKZ8jvoFEWaw8NVRUKhqLshM19tkPKVCRUb3KJ41",
+      "at": "2026-10-22T17:37:00.000Z",
+      "kind": "buy",
+      "sol": 1.385,
+      "tokens": 100000
+    }
+  ]
+}

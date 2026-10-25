@@ -1,0 +1,322 @@
+"use client";
+
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { Chip, Typography } from "@heroui/react";
+import { AppShell } from "@/components/AppShell";
+import { ExternalLink, Icon } from "@/components/ui";
+
+/**
+ * Canonical transparency reference for the Pay lottery. Consolidates the
+ * draw lifecycle, the provably-fair verification story, eligibility, payouts,
+ * the run schedule, and a FAQ — all grounded in the actual mechanics in
+ * lib/lottery/engine.ts, lib/lottery/verify.ts, and lib/solana/randomness.ts.
+ *
+ * The drand quicknet chain hash below is the public beacon identifier; the same
+ * value is exported from lib/solana/randomness.ts (DRAND_CHAIN_HASH). Kept inline
+ * here so this static page pulls no server-only module into the client bundle.
+ */
+const DRAND_CHAIN_URL =
+  "https://drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971";
+
+export default function HowItWorksPage() {
+  return (
+    <AppShell title="How it works">
+      <main className="mx-auto max-w-7xl px-8 lg:px-10 pt-8 sm:pt-10 pb-12">
+        <div className="max-w-3xl flex flex-col">
+        {/* Header */}
+        <header className="pb-8 border-b border-(--border)">
+          <Typography type="h4">How the lottery works</Typography>
+          <Typography type="body-sm" color="muted" className="mt-1.5">
+            Hold PAY and you’re in every draw — no tickets, no sign-up. Trading fees from
+            Pump.fun become the prize pool, and wallets are picked at random by drand, a
+            public randomness service nobody controls. Anyone can check a finished draw in
+            their own browser.
+          </Typography>
+          <div className="flex flex-wrap gap-2 mt-4">
+            <Chip variant="soft" color="default">Holding is the entry</Chip>
+            <Chip variant="soft" color="default">Random draw</Chip>
+            <Chip variant="soft" color="default">Paid in SOL</Chip>
+            <Chip variant="soft" color="default">Publicly checkable</Chip>
+          </div>
+        </header>
+
+        {/* Draw lifecycle */}
+        <Section title="From holder list to payout">
+          <ol className="flex flex-col gap-5">
+            <Step n={1} title="The holder list refreshes">
+              Every 5 minutes the app re-reads PAY balances on Solana. Every wallet holding
+              at least the minimum PAY goes on the list; the project’s own wallet is left
+              out. That list is what the draw picks from.
+            </Step>
+            <Step n={2} title="The draw asks drand for a number">
+              On the draw schedule (hourly by default) the app fetches the newest random
+              number from drand. It asks two separate drand servers for the same round and
+              refuses to draw if their answers differ.
+            </Step>
+            <Step n={3} title="That number shuffles the list">
+              The number is hashed into a stream of randomness, which shuffles the holder
+              list like a deck of cards. The first wallets after the shuffle win, in rank
+              order. Same number and same list always give the same winners.
+            </Step>
+            <Step n={4} title="The prize is split by rank">
+              The pool is divided by a fixed split that adds up to 100% — for example
+              50 / 30 / 20 when there are three winners. Any leftover rounding dust goes to
+              first place. If a platform fee is switched on, it comes off the top first (see
+              Where the money goes).
+            </Step>
+            <Step n={5} title="Winners are paid in SOL">
+              All winners are paid in the same Solana transaction — one transfer per winner,
+              sent together from the project wallet. That transaction is saved and linked
+              from every winner, so each payment can be looked up on Solana Explorer. A
+              payout shows{" "}
+              <Chip size="sm" variant="soft" color="warning">Pending</Chip>{" "}
+              → <Chip size="sm" variant="soft" color="success">Paid</Chip>.
+            </Step>
+          </ol>
+        </Section>
+
+        {/* Provably fair */}
+        <Section title="You can check any draw yourself">
+          <p className="text-sm text-muted leading-relaxed">
+            Two checks, both run in your browser. Neither one trusts our server:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+            <Card title="① The random number is real">
+              Your browser fetches that same drand round and confirms the number and its
+              signature are exactly what drand published — so the seed we used can’t have
+              been swapped after the fact.
+            </Card>
+            <Card title="② The winners really came from it">
+              The same number and the same holder list are shuffled again in your browser.
+              If the wallets come out in the same order, rank for rank, nobody picked them
+              by hand.
+            </Card>
+          </div>
+
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4 border-t border-(--border) pt-6 mt-6">
+            <Fact label="Beacon" value="quicknet" />
+            <Fact label="Signature type" value="BLS-unchained-G1" />
+            <Fact label="New number" value="every 3s" />
+            <Fact label="Sources" value="drand.sh · cloudflare" />
+          </dl>
+
+          <div className="flex flex-wrap gap-x-5 gap-y-2 pt-5">
+            <NavLink href="/verify">Open the verify tool</NavLink>
+            <ExternalLink href={DRAND_CHAIN_URL} className="text-sm">
+              drand beacon API
+            </ExternalLink>
+          </div>
+        </Section>
+
+        {/* Eligibility */}
+        <Section title="Hold PAY. That’s the whole entry.">
+          <p className="text-sm text-muted leading-relaxed">
+            There is nothing to buy and nothing to sign. If your wallet holds at least the
+            minimum PAY when a draw runs, you are in — once per draw, with the same chance
+            as every other wallet on the list. The list refreshes every 5 minutes, so a
+            recent buy counts before the next draw.
+          </p>
+          <div className="pt-4">
+            <NavLink href="/eligibility">Check your wallet</NavLink>
+          </div>
+        </Section>
+
+        {/* Payouts */}
+        <Section title="Where the money goes">
+          <p className="text-sm text-muted leading-relaxed">
+            The pool is SOL held by the project: the creator fees that Pump.fun pays on PAY
+            trading, minus a small reserve (about 0.05&nbsp;SOL) kept for network fees. When
+            a draw pays out, everything above that reserve goes to the winners.
+          </p>
+          <p className="text-sm text-muted leading-relaxed">
+            A platform fee is off by default (0%). If one is switched on, it is taken from
+            the pool <em>before</em> the split and sent to a separate treasury wallet in the
+            same transaction — so it never goes back into a future prize. The fee never
+            changes who wins, only how much is split between them.
+          </p>
+          <p className="text-sm text-muted leading-relaxed">
+            All payouts for a draw leave in one transaction. If that transaction fails,
+            nothing moves on-chain, the draw is marked failed, and the next draw starts from a
+            clean slate.
+          </p>
+        </Section>
+
+        {/* Schedule */}
+        <Section title="How often things run">
+          <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Fact label="Draws" value="Hourly" hint="top of the hour, by default" />
+            <Fact label="Holder list" value="Every 5 min" hint="refreshes who is eligible" />
+            <Fact label="drand" value="Every 3 s" hint="a new number is always ready" />
+          </dl>
+          <p className="text-sm text-muted pt-4">
+            The schedule can be changed. The home page shows a countdown to the next draw.
+          </p>
+        </Section>
+
+        {/* FAQ */}
+        <Section title="Common questions">
+          <div className="flex flex-col divide-y divide-(--border) border-y border-(--border)">
+            <Faq q="Do I need to register or buy a ticket?">
+              No. Hold at least the minimum PAY and you are in every draw automatically.
+              Check your wallet on the{" "}
+              <Link
+                href="/eligibility"
+                className="text-foreground underline decoration-(--border) underline-offset-4 transition-colors hover:decoration-(--muted)"
+              >
+                Eligibility
+              </Link>{" "}
+              page.
+            </Faq>
+            <Faq q="Can the team choose who wins?">
+              No. Winners come from the drand number and the holder list, and both are public.
+              The same inputs always produce the same winners, so you can re-run any draw
+              yourself.
+            </Faq>
+            <Faq q="What stops the randomness from being rigged?">
+              The number comes from drand, which is run by independent organisations and signs
+              every value it publishes. Each draw is checked against two separate drand servers,
+              and the draw is skipped if they disagree. The signature stays checkable forever.
+            </Faq>
+            <Faq q="When exactly am I entered?">
+              At draw time, from the holder list. The list refreshes every 5 minutes, so a buy
+              made just before a draw may only count for the next one.
+            </Faq>
+            <Faq q="How are prizes paid?">
+              In SOL, sent straight to each winner’s wallet. All winners in a draw are paid in
+              the same transaction, which keeps its signature and links to Solana Explorer.
+              Status goes{" "}
+              <Chip size="sm" variant="soft" color="warning">Pending</Chip> →{" "}
+              <Chip size="sm" variant="soft" color="success">Paid</Chip>.
+            </Faq>
+            <Faq q="Is there a platform fee?">
+              By default, no. If one is enabled it comes out of the pool before the split and
+              goes to a separate treasury wallet — never back into a future prize.
+            </Faq>
+            <Faq q="How many winners per draw, and how is the prize split?">
+              Each draw has a fixed number of winners, ranked 1 to N. The pool follows a fixed
+              split that adds up to 100%, and any rounding remainder goes to first place.
+            </Faq>
+            <Faq q="Which network does this run on?">
+              Solana mainnet or devnet, depending on the deployment. The network is shown at the
+              bottom of the sidebar.
+            </Faq>
+          </div>
+        </Section>
+
+        {/* CTA — view draws */}
+        <section className="pt-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <p className="text-sm text-muted">
+              Want to see it in action? Every finished draw and its winners are on the
+              Draws page.
+            </p>
+            <Link
+              href="/draws"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 shrink-0"
+            >
+              View draws →
+            </Link>
+          </div>
+        </section>
+        </div>
+      </main>
+    </AppShell>
+  );
+}
+
+/* ── small presentational helpers ────────────────────────────────────────── */
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-4 border-b border-(--border) py-8">
+      <Typography type="h5">{title}</Typography>
+      {children}
+    </section>
+  );
+}
+
+/** In-app action link — the quiet muted + arrow recipe of `ExternalLink`, no new tab. */
+function NavLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1.5 text-sm text-muted underline decoration-(--border) underline-offset-4 transition-colors hover:text-foreground hover:decoration-(--muted)"
+    >
+      {children}
+      <Icon name="arrow-up-right" className="h-3.5 w-3.5 opacity-50" />
+    </Link>
+  );
+}
+
+function Step({
+  n,
+  title,
+  children,
+}: {
+  n: number;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <li className="flex gap-3">
+      <span className="shrink-0 mt-0.5 size-7 rounded-full bg-accent/10 text-accent flex items-center justify-center text-xs font-bold ring-1 ring-accent/20">
+        {n}
+      </span>
+      <div className="flex flex-col gap-1 min-w-0">
+        <p className="text-sm font-semibold">{title}</p>
+        <p className="text-sm text-muted leading-relaxed">{children}</p>
+      </div>
+    </li>
+  );
+}
+
+function Card({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-(--border) bg-surface p-5 flex flex-col gap-2">
+      <p className="text-sm font-semibold">{title}</p>
+      <p className="text-sm text-muted leading-relaxed">{children}</p>
+    </div>
+  );
+}
+
+function Fact({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-xs font-mono uppercase text-muted">{label}</dt>
+      <dd className="text-sm font-mono font-semibold">{value}</dd>
+      {hint && <span className="text-xs text-muted">{hint}</span>}
+    </div>
+  );
+}
+
+function Faq({ q, children }: { q: string; children: ReactNode }) {
+  return (
+    <details className="group py-4">
+      <summary className="flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <span className="text-sm font-semibold">{q}</span>
+        <Icon
+          name="expand"
+          className="h-4 w-4 text-muted transition group-open:rotate-90"
+        />
+      </summary>
+      <div className="mt-2 text-sm text-muted leading-relaxed">
+        {children}
+      </div>
+    </details>
+  );
+}

@@ -1,0 +1,163 @@
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+
+/** Convert lamports (bigint/number) to SOL (number). */
+export function lamportsToSol(lamports: bigint | number): number {
+  return Number(lamports) / LAMPORTS_PER_SOL;
+}
+
+/** Convert SOL (number) to lamports (bigint), rounded to nearest. */
+export function solToLamports(sol: number): bigint {
+  return BigInt(Math.round(sol * LAMPORTS_PER_SOL));
+}
+
+/**
+ * Decimals used for every SOL **amount** in the UI (prize pools, payouts, fees,
+ * totals, estimates): always exactly 4, e.g. `0.0013 SOL`. Fixed width matters
+ * more than trimming here — a column that flips between "0.001" and "0.0013",
+ * or between "1.25" and "1.2500", reads as broken alignment rather than as a
+ * deliberate level of precision.
+ */
+export const SOL_DIGITS = 4;
+
+/**
+ * Decimals for a raw **wallet balance**. Dust is meaningful at that scale (the
+ * rent-exempt floor is 0.00065024 SOL, a swept fee can be 0.00007475 SOL), so
+ * the treasury wallet cards keep 6 decimals instead of the usual 4.
+ */
+export const SOL_BALANCE_DIGITS = 6;
+
+/**
+ * Decimals for every SOL figure on the admin **App Info** tab. Fee and pool
+ * numbers there run down to dust (a bare network fee is 0.000005 SOL, a swept
+ * creator pot can be 0.00007475 SOL), which 4 decimals would print as
+ * "0.0000" — i.e. "nothing was paid". Six decimals keep those values readable.
+ * Scoped to that tab on purpose: public pages stay on `SOL_DIGITS` so their
+ * columns keep the stable 4-decimal width.
+ */
+export const SOL_ADMIN_DIGITS = 6;
+
+/**
+ * SOL number → fixed-decimal string **without** the unit, e.g. `0.0013` (4) or
+ * `0.001300` (6). Use this where the "SOL" label is a separate element; use
+ * `fmtSolHuman` when the unit belongs to the string.
+ */
+export function fmtSolNum(sol: number, digits: number = SOL_DIGITS): string {
+  if (!Number.isFinite(sol)) return "—";
+  const step = 1 / 10 ** digits;
+  // A real but sub-precision amount (a 5,000-lamport network fee is 0.000005
+  // SOL) must never print as a flat "0.0000" — that reads as "nothing was
+  // paid". Show the smallest representable value instead, capped with "<".
+  if (sol > 0 && sol < step / 2) return `<${step.toFixed(digits)}`;
+  return sol.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+/**
+ * Human-readable SOL string from lamports, with the unit: e.g. 1_250_000
+ * lamports → "0.0013 SOL". Always 4 decimals (see `SOL_DIGITS`).
+ */
+export function formatSol(
+  lamports: bigint | number,
+  digits: number = SOL_DIGITS
+): string {
+  return `${fmtSolNum(lamportsToSol(lamports), digits)} SOL`;
+}
+
+/** Format a raw token amount (incl. decimals) into a display string. */
+export function formatTokenAmount(raw: bigint, decimals: number): string {
+  if (decimals <= 0) return raw.toLocaleString("en-US");
+  const denominator = 10n ** BigInt(decimals);
+  const whole = raw / denominator;
+  const fraction = raw % denominator;
+  const fracStr = fraction.toString().padStart(decimals, "0").slice(0, 4);
+  return `${whole.toLocaleString("en-US")}.${fracStr}`;
+}
+
+/**
+ * Human-readable SOL string from a SOL **number** (not lamports), with the
+ * unit — e.g. 0.0013 → "0.0013 SOL", 100000 → "100,000.0000 SOL". Always 4
+ * decimals (see `SOL_DIGITS`); pass `SOL_BALANCE_DIGITS` for a raw wallet
+ * balance, which needs 6.
+ */
+export function fmtSolHuman(
+  sol: number,
+  digits: number = SOL_DIGITS
+): string {
+  if (!Number.isFinite(sol)) return "—";
+  return `${fmtSolNum(sol, digits)} SOL`;
+}
+
+/**
+ * Human-readable token amount from a raw integer (string | bigint) + decimals,
+ * trimming trailing zeros so e.g. 1_000_000_000 @ 6dp → "1,000" (not
+ * "1,000.0000"), and 500_000_000 @ 6dp → "0.5". Whole numbers show no decimal
+ * point. Mirrors the helper that used to live locally in the holders page.
+ */
+export function fmtTokenHuman(raw: string | bigint, decimals: number): string {
+  if (decimals <= 0) {
+    try {
+      return BigInt(raw).toLocaleString("en-US");
+    } catch {
+      return String(raw);
+    }
+  }
+  try {
+    const r = BigInt(raw);
+    const denom = 10n ** BigInt(decimals);
+    const whole = r / denom;
+    const fraction = r % denom;
+    if (fraction === 0n) return whole.toLocaleString("en-US");
+    const fracStr = fraction
+      .toString()
+      .padStart(decimals, "0")
+      .slice(0, 4)
+      .replace(/0+$/, "");
+    return `${whole.toLocaleString("en-US")}.${fracStr}`;
+  } catch {
+    return String(raw);
+  }
+}
+
+/** Shorten a base58 address, e.g. "9xQe…v3k2". */
+export function shortAddress(addr: string, head = 4, tail = 4): string {
+  if (!addr) return "";
+  if (addr.length <= head + tail) return addr;
+  return `${addr.slice(0, head)}…${addr.slice(-tail)}`;
+}
+
+/** Build a Solscan URL for an address or tx signature. */
+export function explorerUrl(
+  value: string,
+  kind: "address" | "tx" = "address",
+  network: "mainnet" | "devnet" = "mainnet"
+): string {
+  const cluster = network === "devnet" ? "?cluster=devnet" : "";
+  const path = kind === "tx" ? "tx" : "account";
+  return `https://solscan.io/${path}/${value}${cluster}`;
+}
+
+/**
+ * Relative time string, e.g. "just now", "3 min ago", "2h ago", "5d ago".
+ * Falls back to a medium-format date for anything older than a week.
+ */
+export function timeAgo(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return iso;
+    const seconds = Math.floor((Date.now() - then) / 1000);
+    if (seconds < 0) return "just now";
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString("en-US", { dateStyle: "medium" });
+  } catch {
+    return iso;
+  }
+}

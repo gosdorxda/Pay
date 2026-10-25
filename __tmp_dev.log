@@ -1,0 +1,19 @@
+
+> pay-lottery@0.1.0 dev
+> next dev --webpack
+
+▲ Next.js 16.4.2 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.18.3:3000
+- Environments: .env
+✓ Ready in 524ms
+✓ Running next.config.mjs took 18ms
+[cron] registered — holders="*/5 * * * *", lottery="0 * * * *" (enabled=false), claim="*/10 * * * *"
+[cron] [cron] registered — holders="*/5 * * * *", lottery="0 * * * *" (enabled=false), claim="*/10 * * * *"
+
+○ Compiling /page ...
+ GET / 200 in 3.0s (next.js: 324ms, application-code: 2.7s)
+○ Compiling /admin/page ...
+ GET /admin 200 in 810ms (next.js: 163ms, application-code: 647ms)
+ GET /api/admin/palette 401 in 219ms (next.js: 183ms, application-code: 36ms)
+[?25h

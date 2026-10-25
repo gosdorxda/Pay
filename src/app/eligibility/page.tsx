@@ -1,0 +1,325 @@
+"use client";
+
+import { FormEvent, ReactNode, useState } from "react";
+import { Chip, Label, ProgressBar, Typography } from "@heroui/react";
+import { CircleCheckBig, ShieldAlert } from "lucide-react";
+import { Icon, Skeleton, SkeletonStat } from "@/components/ui";
+import { AppShell } from "@/components/AppShell";
+import { HoldersBrowser } from "@/components/HoldersBrowser";
+import {
+  ExclusionLabelChip,
+  VenueChip,
+  matchExclusionPreset,
+} from "@/components/ExclusionLabelChip";
+import { shortAddress, explorerUrl, timeAgo } from "@/lib/format";
+
+type EligResp = {
+  address: string;
+  network: "mainnet" | "devnet";
+  tokenName: string;
+  tokenMint: string | null;
+  tokenDecimals: number;
+  found: boolean;
+  balanceRaw: string;
+  balanceHuman: string;
+  minTokenEligibleRaw: string;
+  minTokenEligibleHuman: string;
+  eligible: boolean;
+  drawEligible: boolean;
+  excluded: boolean;
+  excludedBy: "venue" | "manual" | null;
+  excludedLabel: string | null;
+  exclusionReason: string | null;
+  shortfallHuman: string;
+  capturedAt: string | null;
+  lastSyncAt: string | null;
+  dbError: string | null;
+};
+
+export default function EligibilityPage() {
+  const [address, setAddress] = useState("");
+  const [data, setData] = useState<EligResp | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function check(e: FormEvent) {
+    e.preventDefault();
+    const a = address.trim();
+    if (!a) return;
+    setLoading(true);
+    setError(null);
+    setData(null);
+    try {
+      const r = await fetch(`/api/eligibility?address=${encodeURIComponent(a)}`);
+      const json = await r.json();
+      if (!r.ok) {
+        setError(
+          json.error === "Invalid Solana address format."
+            ? "That doesn’t look like a Solana wallet address — check for missing or extra characters."
+            : `Couldn’t check that wallet (${r.status}).`
+        );
+      } else setData(json as EligResp);
+    } catch {
+      setError("Couldn’t reach the server — check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <AppShell title="Eligibility">
+
+      <main className="mx-auto max-w-7xl px-8 lg:px-10 pt-8 sm:pt-10 pb-12">
+        <HoldersBrowser
+          title="Eligibility"
+          subtitle="Hold at least the minimum PAY and you’re in every draw automatically. Check your wallet below, or browse the full holder list."
+        >
+          <div className="flex flex-col gap-4">
+
+          <form onSubmit={check}>
+            <div className="flex items-stretch overflow-hidden rounded-lg border border-(--border) bg-surface transition focus-within:border-accent">
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Paste a Solana wallet address"
+                className="flex-1 bg-transparent px-4 py-2.5 font-mono text-sm outline-none"
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex shrink-0 items-center gap-1.5 bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+              >
+                <Icon name="search" className="h-4 w-4" />
+                {loading ? "Checking…" : "Check wallet"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              The holder list refreshes every few minutes, so a recent buy may not show up yet.
+            </p>
+          </form>
+
+          {error && (
+            <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">{error}</div>
+          )}
+
+          {loading && (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="flex items-center gap-4 rounded-lg border border-(--border) bg-surface p-6 lg:col-span-2">
+                <Skeleton className="h-14 w-14 rounded-full" />
+                <div className="flex flex-col gap-2">
+                  <Skeleton className="h-6 w-44" />
+                  <Skeleton className="h-4 w-64" />
+                </div>
+                <Skeleton className="ml-auto h-7 w-24 rounded-full" />
+              </div>
+              <div className="flex flex-col gap-4 rounded-lg border border-(--border) bg-surface p-5">
+                <div className="grid grid-cols-2 gap-5">
+                  <SkeletonStat label="Your balance (PAY)" />
+                  <SkeletonStat label="Minimum (PAY)" />
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
+              </div>
+              <div className="flex flex-col gap-3 rounded-lg border border-(--border) bg-surface p-5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+            </div>
+          )}
+
+          {data && <ResultCard data={data} />}
+          </div>
+        </HoldersBrowser>
+      </main>
+    </AppShell>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <dt className="text-sm text-muted">{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+function ResultCard({ data }: { data: EligResp }) {
+  const pct = (() => {
+    const b = Number(data.balanceRaw);
+    const t = Number(data.minTokenEligibleRaw);
+    if (!t || t <= 0) return 100;
+    return Math.max(0, Math.min(100, (b / t) * 100));
+  })();
+
+  // Banner tone per outcome: excluded → warning (holds the token, but has no
+  // entry), eligible → success (win), found-but-short → danger (action needed),
+  // never-seen → neutral. Keeps the four states visually distinct without
+  // inventing new colour tokens.
+  const token = data.tokenName.toUpperCase();
+  // The draw's own reason (venue accounts) beats the preset hint; free-text and
+  // unlabelled blacklist rows fall back to a generic line.
+  const exclusionNote =
+    data.exclusionReason ??
+    matchExclusionPreset(data.excludedLabel)?.hint ??
+    "This wallet was removed from the draw by the organiser.";
+  const banner = data.excluded
+    ? { cls: "border-warning/30 bg-warning/10", iconBg: "bg-warning/15 text-warning", icon: "face-slightly-frowning", chipColor: "warning" as const, chipText: "Excluded" }
+    : data.eligible
+    ? { cls: "border-success/30 bg-success/10", iconBg: "bg-success/15 text-success", icon: "face-slightly-smiling", chipColor: "success" as const, chipText: "Eligible" }
+    : data.found
+      ? { cls: "border-danger/30 bg-danger/10", iconBg: "bg-danger/15 text-danger", icon: "face-slightly-frowning", chipColor: "danger" as const, chipText: "Not eligible" }
+      : { cls: "border-(--border) bg-default/40", iconBg: "bg-default text-muted", icon: "search", chipColor: "default" as const, chipText: "Not in list" };
+
+  return (
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      {/* Status banner — full width, eye-catching */}
+      <div className={`rounded-lg border p-5 sm:p-6 lg:col-span-2 ${banner.cls}`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${banner.iconBg}`}>
+            {data.excluded ? (
+              <ShieldAlert className="h-7 w-7" aria-hidden />
+            ) : (
+              <Icon name={banner.icon} className="h-7 w-7" />
+            )}
+          </span>
+          <div className="flex min-w-0 flex-col gap-1">
+            {data.excluded ? (
+              <>
+                <span className="text-xl sm:text-2xl font-bold tracking-tight text-warning">Not in the draw</span>
+                <Typography type="body-sm" color="muted">
+                  This wallet was filtered out before the drand shuffle, so it
+                  can’t win. Its balance still shows in the holder table, but it
+                  has no entry in the prize pool.
+                </Typography>
+              </>
+            ) : data.eligible ? (
+              <>
+                <span className="text-xl sm:text-2xl font-bold tracking-tight text-success">You’re eligible</span>
+                <Typography type="body-sm" color="muted">Your balance clears the minimum, so you’re in the pool for the next draw.</Typography>
+              </>
+            ) : data.found ? (
+              <>
+                <span className="text-xl sm:text-2xl font-bold tracking-tight">Not yet eligible</span>
+                <Typography type="body-sm" color="muted">
+                  You need{" "}
+                  <span className="rounded-md bg-default px-2 py-0.5 font-mono text-xs font-semibold text-foreground">{data.shortfallHuman}</span>{" "}
+                  more {token} to qualify.
+                </Typography>
+              </>
+            ) : (
+              <>
+                <span className="text-xl sm:text-2xl font-bold tracking-tight">Not in the holder list</span>
+                <Typography type="body-sm" color="muted">This wallet hasn’t held {token} yet. The list refreshes every few minutes — check again after your first buy.</Typography>
+              </>
+            )}
+          </div>
+          {data.excluded ? (
+            <div className="self-start sm:ml-auto sm:self-auto">
+              {data.excludedBy === "venue" ? (
+                <VenueChip size="lg" text={data.excludedLabel ?? "Venue account"} />
+              ) : (
+                <ExclusionLabelChip label={data.excludedLabel} size="lg" />
+              )}
+            </div>
+          ) : (
+            <Chip className="gap-1 self-start sm:ml-auto sm:self-auto" size="lg" color={banner.chipColor} variant="soft">
+              {data.eligible && <CircleCheckBig className="h-4 w-4 shrink-0" aria-hidden />}
+              {banner.chipText}
+            </Chip>
+          )}
+        </div>
+      </div>
+
+      {(data.found || data.excluded) && (
+        <>
+      {data.found && (
+      <div className="flex flex-col gap-4 rounded-lg border border-(--border) bg-surface p-5">
+        <div className="grid grid-cols-2 gap-5">
+          <div className="flex flex-col gap-1">
+            <span className="text-sm text-muted">Your balance ({token})</span>
+            <span className="text-2xl font-bold tabular-nums tracking-tight text-foreground">{data.balanceHuman}</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-sm text-muted">Minimum ({token})</span>
+            <span className="text-2xl font-bold tabular-nums tracking-tight text-muted">{data.minTokenEligibleHuman}</span>
+          </div>
+        </div>
+        <ProgressBar
+          aria-label="Toward the minimum"
+          value={pct}
+          maxValue={100}
+          size="sm"
+          color={data.eligible ? "success" : "accent"}
+          className="gap-1.5"
+        >
+          <div className="flex items-center justify-between">
+            <Label className="text-sm text-muted">Toward the minimum</Label>
+            <span className="text-xs font-mono tabular-nums text-muted">{pct.toFixed(0)}%</span>
+          </div>
+          <ProgressBar.Track className="bg-default/40">
+            <ProgressBar.Fill className={data.eligible ? "bg-success" : "bg-accent"} />
+          </ProgressBar.Track>
+        </ProgressBar>
+      </div>
+      )}
+
+      <div className={`rounded-lg border border-(--border) bg-surface p-5 ${data.found ? "" : "lg:col-span-2"}`}>
+        <dl className="flex flex-col gap-3 text-sm">
+          <Row label="Draw status">
+            {data.excluded ? (
+              data.excludedBy === "venue" ? (
+                <VenueChip text={data.excludedLabel ?? "Venue account"} />
+              ) : (
+                <ExclusionLabelChip label={data.excludedLabel} />
+              )
+            ) : (
+              <Chip
+                size="sm"
+                variant="soft"
+                color={data.eligible ? "success" : "default"}
+                className="gap-1"
+              >
+                {data.eligible && (
+                  <CircleCheckBig className="h-3 w-3 shrink-0" aria-hidden />
+                )}
+                {data.eligible ? "Eligible" : "Below minimum"}
+              </Chip>
+            )}
+          </Row>
+          <Row label="Wallet">
+            <a href={explorerUrl(data.address, "address", data.network)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 font-mono text-muted transition hover:text-accent">
+              {shortAddress(data.address, 6, 6)}
+              <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
+            </a>
+          </Row>
+          <Row label="Snapshot">
+            <span className="text-muted">{timeAgo(data.lastSyncAt)}</span>
+          </Row>
+          {data.capturedAt && data.capturedAt !== data.lastSyncAt && (
+            <Row label="Balance from">
+              <span className="text-muted">{timeAgo(data.capturedAt)}</span>
+            </Row>
+          )}
+        </dl>
+        {data.excluded && (
+          <div className="mt-3 border-t border-(--border) pt-3">
+            <p className="text-xs leading-relaxed text-muted">{exclusionNote}</p>
+          </div>
+        )}
+      </div>
+        </>
+      )}
+
+      {data.dbError && (
+        <div className="lg:col-span-2 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">
+          The holder list couldn’t be read — {data.dbError}.
+        </div>
+      )}
+    </div>
+  );
+}

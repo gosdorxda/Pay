@@ -1,0 +1,9 @@
+▲ Next.js 16.4.2
+- Local:         http://localhost:3100
+- Network:       http://192.168.18.3:3100
+✓ Ready in 163ms
+✓ Running next.config.mjs took 20ms
+[net] ipv4-first aktif, family auto-selection dimatikan
+[cron] registered — holders="0 0 1 1 *", lottery="0 0 1 1 *" (enabled=true), claim="0 0 1 1 *"
+[cron] [cron] registered — holders="0 0 1 1 *", lottery="0 0 1 1 *" (enabled=true), claim="0 0 1 1 *"
+[db] pool warm (3833 ms)
