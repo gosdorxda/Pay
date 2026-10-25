@@ -30,6 +30,7 @@ import {
   TextField,
 } from "@heroui/react";
 import { useTheme } from "@/lib/use-theme";
+import { useSite } from "@/components/providers/SiteProvider";
 import { Skeleton } from "@/components/ui";
 import { SeoPanel } from "@/components/admin/SeoPanel";
 import { PalettePanel } from "@/components/admin/PalettePanel";
@@ -1153,6 +1154,7 @@ export default function AdminPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const { theme, toggle, mounted } = useTheme();
+  const { siteTitle } = useSite();
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -1334,7 +1336,7 @@ export default function AdminPage() {
         <Card className="max-w-sm w-full">
           <CardHeader className="flex flex-col gap-1">
             <p className="text-lg font-bold">🔐 Admin Login</p>
-            <p className="text-small text-muted">Pay Token Lottery</p>
+            <p className="text-small text-muted">{siteTitle}</p>
           </CardHeader>
           <Separator />
           <form onSubmit={handleLogin}>

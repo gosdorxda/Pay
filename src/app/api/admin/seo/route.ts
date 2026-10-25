@@ -15,6 +15,10 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/admin/seo — effective SEO values + defaults.
  * The admin UI uses `defaults` for placeholders and the reset preview.
+ *
+ * `seo.tokenName` (the one token-name setting) is included here on purpose:
+ * it lives in the same panel + key/value store, so the UI needs no second
+ * endpoint.
  */
 export async function GET(request: NextRequest) {
   if (!isAdmin(request)) {

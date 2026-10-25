@@ -331,9 +331,6 @@ export function DrandBeacon({
   full?: boolean;
   className?: string;
 }) {
-  const chainMeta = chain
-    ? `${chain.name} · ${chain.scheme} · ${chain.period}s round period`
-    : undefined;
   return (
     <div
       className={`flex flex-col gap-3 rounded-lg border border-accent/25 bg-accent/10 px-3 py-3 sm:px-4 ${className}`}
@@ -342,11 +339,10 @@ export function DrandBeacon({
         <span className="text-sm font-semibold">
           drand beacon #{beaconRound}
         </span>
-        {chain?.name && (
-          <span className="text-[11px] text-muted" title={chainMeta}>
-            {chain.name}
-          </span>
-        )}
+        {/* The chain label ("drand-quicknet") used to sit here as a third item
+            in this row. It is noise on a proof panel — the round number and the
+            "View on drand" link already identify the beacon — and on phones it
+            pushed the chip onto its own line, so it is gone. */}
         {typeof verified === "boolean" && (
           <Chip
             size="sm"

@@ -208,7 +208,7 @@ export default function VerifyPage() {
 
   return (
     <AppShell title="Verify">
-      <main className="mx-auto max-w-7xl px-8 lg:px-10 pt-8 sm:pt-10 pb-12">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
         <div className="max-w-3xl flex flex-col gap-6">
           <header>
             <Typography type="h4">Check a draw yourself</Typography>

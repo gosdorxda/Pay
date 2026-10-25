@@ -277,6 +277,33 @@ section[id] {
   animation: pool-coin-float 6s ease-in-out infinite;
 }
 
+/* Mobile drawer — the panel itself slides via Tailwind transitions; the links
+   inside ride in with a short stagger so the drawer reads as an opening menu
+   rather than a block of text snapping sideways. Applied only below lg (where
+   the sidebar is a drawer) and switched off for reduced-motion users. */
+@keyframes drawer-item-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 1023px) {
+  .drawer-item-in {
+    animation: drawer-item-in 280ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer-item-in {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pool-sheen,
   .pool-coin-float {

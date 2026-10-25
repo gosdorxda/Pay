@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Chip, Typography } from "@heroui/react";
 import { AppShell } from "@/components/AppShell";
 import { ExternalLink, Icon } from "@/components/ui";
+import { useSite } from "@/components/providers/SiteProvider";
 
 /**
  * Canonical transparency reference for the Pay lottery. Consolidates the
@@ -20,15 +21,16 @@ const DRAND_CHAIN_URL =
   "https://drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971";
 
 export default function HowItWorksPage() {
+  const { tokenName } = useSite();
   return (
     <AppShell title="How it works">
-      <main className="mx-auto max-w-7xl px-8 lg:px-10 pt-8 sm:pt-10 pb-12">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
         <div className="max-w-3xl flex flex-col">
         {/* Header */}
         <header className="pb-8 border-b border-(--border)">
           <Typography type="h4">How the lottery works</Typography>
           <Typography type="body-sm" color="muted" className="mt-1.5">
-            Hold PAY and you’re in every draw — no tickets, no sign-up. Trading fees from
+            Hold {tokenName} and you’re in every draw — no tickets, no sign-up. Trading fees from
             Pump.fun become the prize pool, and wallets are picked at random by drand, a
             public randomness service nobody controls. Anyone can check a finished draw in
             their own browser.
@@ -45,8 +47,8 @@ export default function HowItWorksPage() {
         <Section title="From holder list to payout">
           <ol className="flex flex-col gap-5">
             <Step n={1} title="The holder list refreshes">
-              Every 5 minutes the app re-reads PAY balances on Solana. Every wallet holding
-              at least the minimum PAY goes on the list; the project’s own wallet is left
+              Every 5 minutes the app re-reads {tokenName} balances on Solana. Every wallet holding
+              at least the minimum {tokenName} goes on the list; the project’s own wallet is left
               out. That list is what the draw picks from.
             </Step>
             <Step n={2} title="The draw asks drand for a number">
@@ -110,10 +112,10 @@ export default function HowItWorksPage() {
         </Section>
 
         {/* Eligibility */}
-        <Section title="Hold PAY. That’s the whole entry.">
+        <Section title={`Hold ${tokenName}. That’s the whole entry.`}>
           <p className="text-sm text-muted leading-relaxed">
             There is nothing to buy and nothing to sign. If your wallet holds at least the
-            minimum PAY when a draw runs, you are in — once per draw, with the same chance
+            minimum {tokenName} when a draw runs, you are in — once per draw, with the same chance
             as every other wallet on the list. The list refreshes every 5 minutes, so a
             recent buy counts before the next draw.
           </p>
@@ -125,7 +127,7 @@ export default function HowItWorksPage() {
         {/* Payouts */}
         <Section title="Where the money goes">
           <p className="text-sm text-muted leading-relaxed">
-            The pool is SOL held by the project: the creator fees that Pump.fun pays on PAY
+            The pool is SOL held by the project: the creator fees that Pump.fun pays on {tokenName}
             trading, minus a small reserve (about 0.05&nbsp;SOL) kept for network fees. When
             a draw pays out, everything above that reserve goes to the winners.
           </p>
@@ -158,7 +160,7 @@ export default function HowItWorksPage() {
         <Section title="Common questions">
           <div className="flex flex-col divide-y divide-(--border) border-y border-(--border)">
             <Faq q="Do I need to register or buy a ticket?">
-              No. Hold at least the minimum PAY and you are in every draw automatically.
+              No. Hold at least the minimum {tokenName} and you are in every draw automatically.
               Check your wallet on the{" "}
               <Link
                 href="/eligibility"

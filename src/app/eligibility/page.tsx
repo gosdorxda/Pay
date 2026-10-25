@@ -6,6 +6,7 @@ import { CircleCheckBig, ShieldAlert } from "lucide-react";
 import { Icon, Skeleton, SkeletonStat } from "@/components/ui";
 import { AppShell } from "@/components/AppShell";
 import { HoldersBrowser } from "@/components/HoldersBrowser";
+import { useSite } from "@/components/providers/SiteProvider";
 import {
   ExclusionLabelChip,
   VenueChip,
@@ -37,6 +38,7 @@ type EligResp = {
 };
 
 export default function EligibilityPage() {
+  const { tokenName } = useSite();
   const [address, setAddress] = useState("");
   const [data, setData] = useState<EligResp | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,10 +71,10 @@ export default function EligibilityPage() {
   return (
     <AppShell title="Eligibility">
 
-      <main className="mx-auto max-w-7xl px-8 lg:px-10 pt-8 sm:pt-10 pb-12">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
         <HoldersBrowser
           title="Eligibility"
-          subtitle="Hold at least the minimum PAY and you’re in every draw automatically. Check your wallet below, or browse the full holder list."
+          subtitle={`Hold at least the minimum ${tokenName} and you’re in every draw automatically. Check your wallet below, or browse the full holder list.`}
         >
           <div className="flex flex-col gap-4">
 
@@ -117,8 +119,8 @@ export default function EligibilityPage() {
               </div>
               <div className="flex flex-col gap-4 rounded-lg border border-(--border) bg-surface p-5">
                 <div className="grid grid-cols-2 gap-5">
-                  <SkeletonStat label="Your balance (PAY)" />
-                  <SkeletonStat label="Minimum (PAY)" />
+                  <SkeletonStat label={`Your balance (${tokenName})`} />
+                  <SkeletonStat label={`Minimum (${tokenName})`} />
                 </div>
                 <Skeleton className="h-2 w-full rounded-full" />
               </div>
@@ -160,7 +162,8 @@ function ResultCard({ data }: { data: EligResp }) {
   // entry), eligible → success (win), found-but-short → danger (action needed),
   // never-seen → neutral. Keeps the four states visually distinct without
   // inventing new colour tokens.
-  const token = data.tokenName.toUpperCase();
+  // Ticker is shown exactly as stored (case included) — no forced uppercase.
+  const token = data.tokenName;
   // The draw's own reason (venue accounts) beats the preset hint; free-text and
   // unlabelled blacklist rows fall back to a generic line.
   const exclusionNote =

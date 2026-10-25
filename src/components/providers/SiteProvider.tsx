@@ -12,12 +12,15 @@ import { createContext, useContext } from "react";
  */
 export type SiteBrand = {
   brandName: string;
+  /** Token ticker (e.g. "PAY") — one admin setting, read by every page. */
+  tokenName: string;
   siteTitle: string;
   description: string;
 };
 
 const FALLBACK: SiteBrand = {
   brandName: "Pay",
+  tokenName: "PAY",
   siteTitle: "PAY Token Lottery",
   description:
     "A verifiable holder lottery for the PAY token on Solana, powered by drand randomness.",

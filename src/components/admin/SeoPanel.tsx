@@ -23,6 +23,7 @@ import {
 
 type SeoView = {
   brandName: string;
+  tokenName: string;
   siteTitle: string;
   description: string;
   keywords: string;
@@ -46,6 +47,7 @@ type SeoResponse = {
 
 const EMPTY: SeoView = {
   brandName: "",
+  tokenName: "",
   siteTitle: "",
   description: "",
   keywords: "",
@@ -239,7 +241,7 @@ export function SeoPanel() {
   async function reset() {
     if (
       !window.confirm(
-        "Reset every SEO field to its default value? This clears the overrides from the database."
+        "Reset every branding & SEO field (including the token name) to its default value? This clears the overrides from the database."
       )
     ) {
       return;
@@ -308,6 +310,20 @@ export function SeoPanel() {
               </h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field
+                  label="Token name"
+                  hint="Ticker used across the app (hero, eligibility, holders, treasury). Case is kept as typed — DRAWFI, DrawFi and drawfi all display exactly like that."
+                  error={errors.tokenName}
+                >
+                  <TextField
+                    aria-label="Token name"
+                    value={draft.tokenName}
+                    onChange={(v) => set("tokenName", v)}
+                    isInvalid={!!errors.tokenName}
+                  >
+                    <Input placeholder={defaults.tokenName} />
+                  </TextField>
+                </Field>
+                <Field
                   label="Brand name"
                   hint="Wordmark in the sidebar, breadcrumbs and the suffix of every page title."
                   error={errors.brandName}
@@ -321,21 +337,21 @@ export function SeoPanel() {
                     <Input placeholder={defaults.brandName} />
                   </TextField>
                 </Field>
-                <Field
-                  label="Homepage title"
-                  hint="Used as the default <title> and the site name in social cards."
-                  error={errors.siteTitle}
-                >
-                  <TextField
-                    aria-label="Homepage title"
-                    value={draft.siteTitle}
-                    onChange={(v) => set("siteTitle", v)}
-                    isInvalid={!!errors.siteTitle}
-                  >
-                    <Input placeholder={defaults.siteTitle} />
-                  </TextField>
-                </Field>
               </div>
+              <Field
+                label="Homepage title"
+                hint="Used as the default <title> and the site name in social cards."
+                error={errors.siteTitle}
+              >
+                <TextField
+                  aria-label="Homepage title"
+                  value={draft.siteTitle}
+                  onChange={(v) => set("siteTitle", v)}
+                  isInvalid={!!errors.siteTitle}
+                >
+                  <Input placeholder={defaults.siteTitle} />
+                </TextField>
+              </Field>
               <Field
                 label="Meta description"
                 hint={`Shown in search results and link previews · ${draft.description.length}/320`}

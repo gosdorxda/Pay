@@ -19,6 +19,13 @@ import { prisma } from "./prisma";
 
 export const SEO_KEYS = {
   brandName: "SEO_BRAND_NAME",
+  /**
+   * Ticker of the token the lottery is built around. Deliberately NOT prefixed
+   * `SEO_`: it is a product setting read by pages/APIs, not metadata — but it
+   * lives in the same panel + key/value store so admins have ONE place to edit
+   * the name (previously hardcoded as `"PAY"` in several files).
+   */
+  tokenName: "TOKEN_NAME",
   siteTitle: "SEO_SITE_TITLE",
   description: "SEO_DESCRIPTION",
   keywords: "SEO_KEYWORDS",
@@ -36,6 +43,8 @@ export type SeoField = keyof typeof SEO_KEYS;
 export interface SiteSeo {
   /** Site wordmark + title suffix, e.g. "Pay". */
   brandName: string;
+  /** Token ticker shown across the app, e.g. "PAY". Case is kept as typed. */
+  tokenName: string;
   /** Default <title> for the homepage / browser tab. */
   siteTitle: string;
   /** Meta description used site-wide unless a page overrides it. */
@@ -60,9 +69,13 @@ export interface SiteSeo {
 
 const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || "";
 const envGaId = process.env.NEXT_PUBLIC_GA_ID?.trim() || "";
+/** Optional env default; the DB `TOKEN_NAME` row always wins. Case untouched. */
+const envTokenName =
+  process.env.TOKEN_NAME?.trim().replace(/^\$+/, "") || "";
 
 export const SEO_DEFAULTS: SiteSeo = {
   brandName: "Pay",
+  tokenName: envTokenName || "PAY",
   siteTitle: "PAY Token Lottery",
   description:
     "A verifiable holder lottery for the PAY token on Solana, powered by drand randomness.",
@@ -104,6 +117,12 @@ export const getSiteSeo = cache(async (): Promise<SiteSeo> => {
     }
     const indexing = byKey.get(SEO_KEYS.allowIndexing);
     if (indexing !== undefined) seo.allowIndexing = indexing !== "false";
+    // A hand-edited row must never leak whitespace / a `$` prefix into the UI;
+    // the case it was saved with is kept.
+    const stored = normalizeTokenName(seo.tokenName);
+    seo.tokenName = TOKEN_NAME_RE.test(stored)
+      ? stored
+      : SEO_DEFAULTS.tokenName;
   } catch (e) {
     console.warn(
       "[seo] settings unavailable, using defaults:",
@@ -113,7 +132,28 @@ export const getSiteSeo = cache(async (): Promise<SiteSeo> => {
   return seo;
 });
 
+/**
+ * The ONE source of truth for the token ticker shown anywhere in the UI:
+ * DB `TOKEN_NAME` → env `TOKEN_NAME` → `"PAY"`. Reuses `getSiteSeo()`'s cached
+ * query, so this costs nothing extra inside the request that already read SEO.
+ */
+export const getTokenName = cache(async (): Promise<string> => {
+  return (await getSiteSeo()).tokenName;
+});
+
 export type SeoErrors = Partial<Record<SeoField, string>>;
+
+/** Ticker shape: 1–16 chars, starts with a letter/digit, then letters/digits/_.- */
+const TOKEN_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,15}$/;
+
+/**
+ * `$pay` → `pay`, `  DrawFi ` → `DrawFi`. Only trims and drops a `$` prefix —
+ * **case is preserved exactly as typed**, so `DrawFi`, `drawfi` and `DRAWFI`
+ * are three different (all valid) tickers. Validation rejects anything else.
+ */
+export function normalizeTokenName(value: string): string {
+  return value.trim().replace(/^\$+/, "");
+}
 
 function isHttpUrl(value: string): boolean {
   try {
@@ -187,6 +227,7 @@ export function normalizeSeoInput(input: unknown): SiteSeo {
 
   return {
     brandName: str("brandName", SEO_DEFAULTS.brandName),
+    tokenName: normalizeTokenName(str("tokenName", SEO_DEFAULTS.tokenName)),
     siteTitle: str("siteTitle", SEO_DEFAULTS.siteTitle),
     description: str("description", SEO_DEFAULTS.description),
     keywords,
@@ -212,6 +253,10 @@ export function validateSeo(seo: SiteSeo): SeoErrors {
 
   if (seo.brandName.length < 1 || seo.brandName.length > 40) {
     errors.brandName = "Use 1–40 characters.";
+  }
+  if (!TOKEN_NAME_RE.test(seo.tokenName)) {
+    errors.tokenName =
+      "Use 1–16 letters, numbers, or . _ - (any case, e.g. PAY or DrawFi; the $ is optional).";
   }
   if (seo.siteTitle.length < 1 || seo.siteTitle.length > 70) {
     errors.siteTitle = "Use 1–70 characters (Google truncates around 60).";

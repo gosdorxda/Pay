@@ -140,6 +140,7 @@ export default async function RootLayout({
           <SiteProvider
             value={{
               brandName: seo.brandName,
+              tokenName: seo.tokenName,
               siteTitle: seo.siteTitle,
               description: seo.description,
             }}

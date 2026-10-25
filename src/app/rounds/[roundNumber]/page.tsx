@@ -362,7 +362,7 @@ export default function RoundPage() {
 
   return (
     <AppShell title="Draw">
-      <main className="mx-auto max-w-7xl px-8 lg:px-10 pt-8 sm:pt-10 pb-12 flex flex-col gap-6">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12 flex flex-col gap-6">
         <div className="max-w-3xl">
           <div className="flex items-center gap-3">
             <Typography type="h4">

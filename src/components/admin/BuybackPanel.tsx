@@ -13,6 +13,7 @@ import {
 } from "@heroui/react";
 import type { BuybackData, BuybackKind } from "@/lib/buyback";
 import { fmtSolNum } from "@/lib/format";
+import { useSite } from "@/components/providers/SiteProvider";
 
 /**
  * Admin → Buyback & burn.
@@ -140,6 +141,7 @@ function Field({
 }
 
 export function BuybackPanel() {
+  const { tokenName } = useSite();
   const [draft, setDraft] = useState<Draft>({
     feeSharePct: "",
     supply: "",
@@ -325,7 +327,7 @@ export function BuybackPanel() {
                 </Field>
                 <Field
                   label="Supply"
-                  hint="PAY in circulation (human units) — the denominator of “burned %”."
+                  hint={`${tokenName} in circulation (human units) — the denominator of “burned %”.`}
                   error={errors.supply}
                 >
                   <TextField

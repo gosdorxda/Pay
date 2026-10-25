@@ -54,7 +54,9 @@ const winnerBranches: Branch[] = WINNER_YS.map((y, i) => {
   };
 });
 
-// The same fork in the mobile 300x58 box (vertical, under the drand card).
+// The desktop fork, redrawn in a 300x58 mobile box: the same split out of the
+// drand card's bottom edge into one wire per winner. Short horizontal gap
+// between the two outer branches keeps them readable at ~92 px columns.
 const MOBILE_BRANCHES: Branch[] = [
   { d: "M 150 0 C 150 25 48 24 48 58", c1: [150, 25], c2: [48, 24], end: [48, 58] },
   { d: "M 150 0 V 58", c1: [150, 19.33], c2: [150, 38.67], end: [150, 58] },
@@ -302,6 +304,7 @@ function Node({
   subtitle,
   badgeClassName = "bg-accent/10 text-accent ring-1 ring-inset ring-accent/20",
   active = false,
+  dense = false,
 }: {
   icon: ReactNode;
   /** Optional brand art, e.g. ART.pumpfun. Falls back to `icon` if it 404s. */
@@ -310,18 +313,38 @@ function Node({
   subtitle: ReactNode;
   badgeClassName?: string;
   active?: boolean;
+  /** Phone 3-across winner column (~110 px at 375 px). Same type, same order,
+   *  same 60 px height — only the badge and the inner padding shrink, and only
+   *  while the column is too narrow to hold the step-card badge (see below). */
+  dense?: boolean;
 }) {
   const [artBroken, setArtBroken] = useState(false);
   const showArt = Boolean(image) && !artBroken;
+  // One shape everywhere: badge left, title over subtitle, both left-aligned,
+  // and the same 60 px minimum height. The *type* never changes — title 14 px
+  // (`text-sm`), subtitle 12 px (`text-xs`), same weight/tracking as the step
+  // cards. The badge/padding step is driven by geometry, not taste: "Winner #1"
+  // at 14 px is ~64 px wide, and a 3-across column at 375 px only has 110 px, so
+  // 32 px badge + 12 px padding leaves 52 px for the copy and clips it. 24 px
+  // badge + 8 px padding gives exactly the 64 px it needs. From 460 px up the
+  // column is wide enough and the tile takes the step-card tokens verbatim.
+  const layout = `items-center text-left ${dense ? "gap-1.5 min-[460px]:gap-2.5" : "gap-2.5"}`;
+  const padding = dense
+    ? "min-h-[60px] px-2 py-2 min-[460px]:px-3 min-[460px]:py-3"
+    : "min-h-[60px] px-3 py-3";
+  const badgeSize = dense
+    ? "size-6 rounded-lg min-[460px]:size-8 min-[460px]:rounded-xl"
+    : "size-8 rounded-xl";
+  const radius = dense ? "rounded-xl min-[460px]:rounded-2xl" : "rounded-2xl";
   return (
     <div
-      className={`relative z-10 flex min-h-[60px] min-w-0 items-center gap-2.5 rounded-2xl border bg-surface px-3 py-3 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+      className={`relative z-10 flex min-w-0 ${radius} border bg-surface shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${layout} ${padding} ${
         active
           ? "border-accent/60 ring-2 ring-accent/30"
           : "border-(--border) hover:border-muted/40"
       }`}
     >
-      <span className={`flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-xl ${badgeClassName}`}>
+      <span className={`flex shrink-0 items-center justify-center overflow-hidden ${badgeSize} ${badgeClassName}`}>
         {showArt && image ? (
           <img
             src={image}
@@ -336,9 +359,23 @@ function Node({
         )}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold tracking-tight text-foreground">{title}</span>
+        <span
+          className={`block truncate text-left text-sm font-semibold tracking-tight text-foreground ${
+            dense ? "max-[379px]:text-[13px]" : ""
+          }`}
+        >
+          {title}
+        </span>
         {typeof subtitle === "string" ? (
-          <span className="block truncate text-xs text-muted">{subtitle}</span>
+          <span
+            className={
+              dense
+                ? "block break-words text-left text-xs text-muted"
+                : "block truncate text-left text-xs text-muted"
+            }
+          >
+            {subtitle}
+          </span>
         ) : (
           subtitle
         )}
@@ -361,23 +398,38 @@ function rankBadgeClass(rank: number): string {
 }
 
 // Winner card - built from the very same <Node> as the three step cards, so the
-// type, padding, height and border match exactly (it used to be a shorter card
-// with a HeroUI Avatar and a 10 px bold badge, which read as a different font).
-// The rank is the badge slot; the SOL share arrives as the subtitle when the
-// travelling dots land.
-function WinnerCard({ index, reveal }: { index: number; reveal: boolean }) {
+// order, alignment and height match exactly (it used to be a shorter card with a
+// HeroUI Avatar and a 10 px bold badge, which read as a different font). The
+// `dense` variant is only for the phone's 3-across row and scales the same tile
+// down; it does not change the shape. The rank is the badge slot; the SOL share
+// arrives as the subtitle when the travelling dots land.
+function WinnerCard({
+  index,
+  reveal,
+  dense = false,
+}: {
+  index: number;
+  reveal: boolean;
+  /** Phone 3-across row: three winners side by side, one column each. */
+  dense?: boolean;
+}) {
   const rank = index + 1;
   const amount = EXAMPLE_PAYOUTS_SOL[index] ?? "0.0000 SOL";
   return (
     <div className="relative">
       <Node
-        icon={<span className="text-sm font-bold leading-none">{rank}</span>}
+        icon={
+          <span className={`font-bold leading-none ${dense ? "text-xs min-[460px]:text-sm" : "text-sm"}`}>
+            {rank}
+          </span>
+        }
         title={`Winner #${rank}`}
         badgeClassName={rankBadgeClass(rank)}
+        dense={dense}
         subtitle={
           reveal ? (
             <motion.span
-              className="block text-xs tabular-nums text-accent"
+              className="block tabular-nums text-xs text-accent"
               initial={{ opacity: 0, y: 3 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
@@ -385,7 +437,15 @@ function WinnerCard({ index, reveal }: { index: number; reveal: boolean }) {
               {amount}
             </motion.span>
           ) : (
-            <span className="block text-xs text-muted">Awaiting payout</span>
+            <span
+              className={
+                dense
+                  ? "block break-words text-xs text-muted"
+                  : "block truncate text-xs text-muted"
+              }
+            >
+              Awaiting payout
+            </span>
           )
         }
       />
@@ -511,31 +571,52 @@ export default function HowItWorksFlow({
         className="flex flex-col gap-2 lg:hidden"
         aria-label="Pump.fun creator fee flows through the Pay engine and drand to three winners"
       >
-        <Node
-          icon={<Zap size={18} />}
-          image={ART.pumpfun}
-          title="Pump.fun trading"
-          active={pumping}
-          subtitle={pumping ? <FeeCharge active /> : "1 SOL creator fee"}
-          badgeClassName="bg-emerald-500/10 text-emerald-500 ring-1 ring-inset ring-emerald-500/20"
-        />
+        {/* Phones keep the flow as a centred column of capped cards, but each
+            card is left-aligned exactly like the desktop tile (badge left, copy
+            left) — centring the card contents made the Pump.fun step stop
+            looking like the same tile, and left the subtitle floating under the
+            icon. Only the *column* is centred now, not the text inside — and the
+            card is capped at 13rem, because at 18rem it was much wider than the
+            copy it holds. */}
+        <div className="mx-auto w-full max-w-[13rem]">
+          <Node
+            icon={<Zap size={18} />}
+            image={ART.pumpfun}
+            title="Pump.fun trading"
+            active={pumping}
+            subtitle={pumping ? <FeeCharge active /> : "1 SOL creator fee"}
+            badgeClassName="bg-emerald-500/10 text-emerald-500 ring-1 ring-inset ring-emerald-500/20"
+          />
+        </div>
         <MobileWire active={walking1} t={walk1T} />
-        <Node
-          icon={<Dices size={18} />}
-          image={ART.pay}
-          title="Pay engine"
-          active={platformActive}
-          subtitle={platformActive ? <ShuffleDots active /> : "Provably-fair shuffle"}
-        />
+        <div className="mx-auto w-full max-w-[13rem]">
+          <Node
+            icon={<Dices size={18} />}
+            image={ART.pay}
+            title="Pay engine"
+            active={platformActive}
+            subtitle={platformActive ? <ShuffleDots active /> : "Provably-fair shuffle"}
+          />
+        </div>
         <MobileWire active={walking2} t={walk2T} />
-        <Node
-          icon={<Hash size={18} />}
-          image={ART.drand}
-          title="drand beacon"
-          active={drandActive}
-          subtitle={<ScrambleText active={drandActive} base={chainName ?? "Verifiable beacon"} />}
-        />
-        <div className="relative h-[58px]" aria-hidden="true">
+        <div className="mx-auto w-full max-w-[13rem]">
+          <Node
+            icon={<Hash size={18} />}
+            image={ART.drand}
+            title="drand beacon"
+            active={drandActive}
+            subtitle={<ScrambleText active={drandActive} base={chainName ?? "Verifiable beacon"} />}
+          />
+        </div>
+        {/* The desktop split, on the phone: the drand card pours into a
+            three-way fork and one dot per winner lands on the three column
+            centres (16% / 50% / 84%) — the same fan as desktop, not a single
+            wire. `-my-2` pulls the fork into the flex gaps (gap-2 = 8 px) so the
+            branches start on the drand card's bottom border and land on the
+            winner cards' top border; the 58-unit box is stretched to 72 px
+            (`preserveAspectRatio="none"`), which gives the fan more travel
+            without redoing the curve maths. */}
+        <div className="relative -my-2 h-[72px]" aria-hidden="true">
           <svg className="h-full w-full overflow-visible" viewBox="0 0 300 58" preserveAspectRatio="none">
             {MOBILE_BRANCHES.map((b) => (
               <path key={b.d} d={b.d} {...flowLineProps} />
@@ -553,9 +634,14 @@ export default function HowItWorksFlow({
               />
             ))}
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {/* Three winners on one row — #1 left, #2 centre, #3 right — directly
+            under the three fork tips. The row is a 3-column grid (not shrink-to-
+            fit cards) so each card's centre is exactly the 16% / 50% / 84% the
+            branches point at. `dense` keeps the step-card shape (badge left,
+            title over subtitle, left-aligned, 60 px tall) at ~92 px per column. */}
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
           {[0, 1, 2].map((index) => (
-            <WinnerCard key={index} index={index} reveal={reveal} />
+            <WinnerCard key={index} index={index} reveal={reveal} dense />
           ))}
         </div>
       </div>
@@ -568,11 +654,17 @@ export default function HowItWorksFlow({
 
 /** Vertical wire carrying the same travelling dot as the desktop flow. The dot
  *  is mounted only while its phase is active (caller passes `active`), so one
- *  wire at a time is live: Pump.fun -> Pay engine -> drand. */
+ *  wire at a time is live: Pump.fun -> Pay engine -> drand. The last hop
+ *  (drand -> winners) is the three-way fork below, exactly like desktop. */
 function MobileWire({ active, t }: { active: boolean; t: number }) {
   return (
-    <div className="relative flex h-10 items-center justify-center" aria-hidden="true">
-      <svg className="h-full w-12 overflow-visible" viewBox="0 0 48 40">
+    // `-my-2` cancels the 8px flex gap on both sides (gap-2) so the wire starts
+    // on the previous card's border and ends on the next card's border; without
+    // it the line visibly floated between the cards. The 40-unit viewBox is
+    // stretched to the h-14 box, so the run between two cards stays connected
+    // at any height.
+    <div className="relative -my-2 flex h-14 items-center justify-center" aria-hidden="true">
+      <svg className="h-full w-12 overflow-visible" viewBox="0 0 48 40" preserveAspectRatio="none">
         <path d="M24 0 V40" {...flowLineProps} />
       </svg>
       {active ? (

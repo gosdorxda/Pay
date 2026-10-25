@@ -113,9 +113,12 @@ function Step({ src, label }: { src: string; label: string }) {
 function WinnerBadges({
   winners,
   size = "size-6",
+  text = "text-[10px]",
 }: {
   winners: Winner[];
   size?: string;
+  /** Glyph size inside the circles — the mobile row bumps it alongside `size`. */
+  text?: string;
 }) {
   if (winners.length === 0) {
     return <span className="text-[11px] text-muted">no winners</span>;
@@ -136,7 +139,7 @@ function WinnerBadges({
             className="shrink-0 cursor-default rounded-full ring-2 ring-surface"
           >
             <span
-              className={`${size} grid place-items-center rounded-full font-mono text-[10px] font-semibold tabular-nums ${rankBadge(
+              className={`${size} ${text} grid place-items-center rounded-full font-mono font-semibold tabular-nums ${rankBadge(
                 w.rank,
               )}`}
             >
@@ -156,7 +159,7 @@ function WinnerBadges({
             className="shrink-0 cursor-default rounded-full ring-2 ring-surface"
           >
             <span
-              className={`${size} grid place-items-center rounded-full bg-default text-[10px] font-semibold text-muted ring-1 ring-(--border)`}
+              className={`${size} ${text} grid place-items-center rounded-full bg-default font-semibold text-muted ring-1 ring-(--border)`}
             >
               +{extra}
             </span>
@@ -217,14 +220,16 @@ function DrawRow({
         aria-label={`Draw #${round.roundNumber}, ${ranked.length} ${
           ranked.length === 1 ? "winner" : "winners"
         }, ${fmtSolHuman(round.prizePoolSol)}. ${open ? "Hide" : "Show"} details`}
-        className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-default/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 sm:px-5"
+        className="group grid w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-default/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40 sm:px-5 md:flex"
       >
-        {/* Left: the number that matters (prize pool), draw id under it */}
-        <span className="flex w-28 shrink-0 flex-col leading-tight sm:w-44">
-          <span className="font-mono text-lg font-semibold tabular-nums sm:text-xl">
+        {/* Left: the number that matters (prize pool), draw id under it.
+            `minmax(0,1fr)` + truncation keeps this column from ever growing
+            into the centred badge cluster on a narrow phone. */}
+        <span className="col-start-1 flex min-w-0 flex-col leading-tight md:w-44 md:shrink-0">
+          <span className="truncate font-mono text-base font-semibold tabular-nums sm:text-xl">
             {fmtSolHuman(round.prizePoolSol)}
           </span>
-          <span className="mt-1 text-[10px] font-normal uppercase tracking-[0.12em] text-muted/80">
+          <span className="mt-1 truncate text-[10px] font-normal uppercase tracking-[0.12em] text-muted/80">
             Draw #{round.roundNumber}
           </span>
         </span>
@@ -248,9 +253,14 @@ function DrawRow({
           </span>
         </span>
 
-        {/* Below md the chain is dropped; the rank circles + count keep it legible. */}
-        <span className="flex flex-1 items-center gap-2 md:hidden">
-          <WinnerBadges winners={ranked} size="size-5" />
+        {/* Below md the chain is dropped and the rank circles take the middle
+            grid track. With `minmax(0,1fr) auto minmax(0,1fr)` that track is
+            the true centre of the row — they used to sit in the leftover space
+            beside the pool, which read as "left" — and no long pool number can
+            ever reach them. They are one step larger here because there is no
+            chain around them to carry the eye. */}
+        <span className="col-start-2 flex items-center justify-self-center gap-2 md:hidden">
+          <WinnerBadges winners={ranked} size="size-7" text="text-[11px]" />
           <span className="hidden text-[11px] text-muted sm:inline">
             {ranked.length} {ranked.length === 1 ? "winner" : "winners"}
           </span>
@@ -258,7 +268,7 @@ function DrawRow({
 
         {/* Right: when it ran, then a bare chevron — no chip, so it never
             reads as a link or a button with its own frame. */}
-        <span className="flex shrink-0 items-center gap-3">
+        <span className="col-start-3 flex shrink-0 items-center justify-self-end gap-3 md:col-auto">
           <span
             className="hidden w-20 truncate text-right text-[11px] text-muted sm:inline-block"
             title={fmtTime(when)}

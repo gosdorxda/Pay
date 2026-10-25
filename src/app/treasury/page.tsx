@@ -14,6 +14,7 @@ import {
   Typography,
 } from "@heroui/react";
 import { AppShell } from "@/components/AppShell";
+import { useSite } from "@/components/providers/SiteProvider";
 import { Icon, Skeleton, SkeletonRows } from "@/components/ui";
 import { explorerUrl, shortAddress, SOL_BALANCE_DIGITS } from "@/lib/format";
 import { DEMO_FEE_TXS } from "@/lib/demo-finance";
@@ -201,7 +202,7 @@ export default function TreasuryPage() {
 
   return (
     <AppShell title="Treasury">
-      <main className="mx-auto max-w-7xl px-8 lg:px-10 pt-8 sm:pt-10 pb-12 flex flex-col gap-6">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12 flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div className="max-w-3xl">
             <Typography type="h4">Treasury</Typography>
@@ -542,6 +543,7 @@ function BuybackCard({
   data: BuybackData | null;
 }) {
   const s = useMemo(() => (data ? summarizeBuyback(data) : null), [data]);
+  const { tokenName } = useSite();
   const txs = data?.txs ?? [];
   const runs = s?.runs ?? 0;
 
@@ -562,7 +564,7 @@ function BuybackCard({
         <BuybackStat
           label="Bought"
           value={s && s.bought > 0 ? s.bought.toLocaleString("en-US") : "—"}
-          caption="PAY tokens"
+          caption={`${tokenName} tokens`}
         />
         <BuybackStat
           label="Burned"

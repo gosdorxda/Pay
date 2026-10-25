@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { getTokenName } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Eligibility",
-  description:
-    "Check whether a Solana wallet holds enough PAY to enter the next draw.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const token = await getTokenName();
+  return {
+    title: "Eligibility",
+    description: `Check whether a Solana wallet holds enough ${token} to enter the next draw.`,
+  };
+}
 
 export default function EligibilityLayout({
   children,

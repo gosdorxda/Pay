@@ -84,7 +84,7 @@ Kalau `.env` tidak ikut tersalin, buat baru di root. Yang **wajib** (kalau koson
 | `ADMIN_PASSWORD` | login `/admin` |
 | `ADMIN_SESSION_SECRET` | secret cookie admin |
 
-Yang punya default (boleh tidak diisi): `SOLANA_NETWORK` (`mainnet`), `TOKEN_DECIMALS` (`6`), `LOTTERY_CRON` (`0 * * * *`), `HOLDER_SYNC_CRON` (`*/5 * * * *`), `MIN_TOKEN_ELIGIBLE`, `PRIZE_RESERVE_LAMPORTS` (default 0.05 SOL), `WINNER_COUNT` (`3`), `PAYOUT_DISTRIBUTION` (`0.5,0.3,0.2`, harus berjumlah 1.0), `LOTTERY_CRON_ENABLED`, `PLATFORM_TREASURY_SECRET` (opsional), `ADMIN_USERNAME` (`admin`).
+Yang punya default (boleh tidak diisi): `SOLANA_NETWORK` (`mainnet`), `TOKEN_DECIMALS` (`6`), `LOTTERY_CRON` (`0 * * * *`), `HOLDER_SYNC_CRON` (`*/5 * * * *`), `MIN_TOKEN_ELIGIBLE`, `PRIZE_RESERVE_LAMPORTS` (default 0.05 SOL), `WINNER_COUNT` (`3`), `PAYOUT_DISTRIBUTION` (`0.5,0.3,0.2`, harus berjumlah 1.0), `LOTTERY_CRON_ENABLED`, `PLATFORM_TREASURY_SECRET` (opsional), `ADMIN_USERNAME` (`admin`), `TOKEN_NAME` (ticker tampilan, default `PAY`, case apa adanya — `DrawFi` tetap `DrawFi`; nilai di database menang atas env).
 
 Nilai yang sekarang dipakai: **network mainnet**, `WINNER_COUNT=3`, `PAYOUT_DISTRIBUTION=0.5,0.3,0.2`, `LOTTERY_CRON_ENABLED=false`.
 

@@ -211,6 +211,7 @@ sudo chown pay:pay /var/www/pay/.env
 | `PAYOUT_DISTRIBUTION` | `0.5,0.3,0.2` | **harus berjumlah 1.0** |
 | `PLATFORM_TREASURY_SECRET` | opsional | kalau kosong, fee tetap di wallet platform |
 | `ADMIN_USERNAME` | `admin` | |
+| `TOKEN_NAME` | `PAY` | ticker yang tampil di UI (hero, eligibility, holders, treasury); bisa diubah dari `/admin` → SEO & Analytics → **Token name** — nilai DB menang atas env |
 | `HELIUS_API_KEY` | opsional | dipakai beberapa endpoint |
 | `CLAIM_CRON` | `*/10 * * * *` | jadwal cek creator fee |
 | `CLAIM_AUTO_ENABLED` | `false` | auto-claim; biarkan `false` sampai yakin |
@@ -227,6 +228,11 @@ Nama lengkap key yang dibaca app (29): `SOLANA_NETWORK`, `HELIUS_API_KEY`, `SOLA
 `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `PUMPFUN_API_BASE`, `CLAIM_CRON`,
 `CLAIM_AUTO_ENABLED`, `CLAIM_MIN_SOL`, `CLAIM_MIN_WALLET_SOL`, `CLAIM_PRIORITY_FEE_SOL`,
 `NET_PREFER_IPV4`.
+
+Ticker tampilan dibaca terpisah oleh `src/lib/seo.ts` (bukan `getConfig()`): `TOKEN_NAME`
+opsional, default `PAY`, dan baris `TOKEN_NAME` di tabel `AdminSetting` selalu menang —
+jadi mengubahnya lewat `/admin` tidak perlu restart atau rebuild. Case disimpan apa
+adanya (tidak dipaksa uppercase): `DrawFi`, `drawfi` dan `DRAWFI` sah semua.
 
 Kalau ada key wajib yang kosong, app **tetap boot** tapi scheduler menulis
 `[cron] config not ready — skipping cron registration` dan `/api/status` bisa 500 — tanda

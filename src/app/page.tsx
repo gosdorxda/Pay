@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -17,9 +17,9 @@ import { fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
    Live data. The homepage fetches /api/status (current prize pool, eligible
    count, latest round, min-eligible threshold, lottery cron) and /api/rounds
    (round history for totals + the drand chain metadata) on mount and derives
-   every displayed number from those responses — no hardcoded stats.
+   every displayed number from those responses — no hardcoded stats. The token
+   ticker comes from the one admin setting via `useSite()`.
    ────────────────────────────────────────────────────────────────────────── */
-const TOKEN_NAME = "PAY";
 
 type Winner = {
   rank: number;
@@ -184,21 +184,29 @@ export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
-  const { brandName } = useSite();
+  const { brandName, tokenName } = useSite();
   const brandInitial = brandName.trim().charAt(0).toUpperCase() || "P";
 
   // Mobile drawer: lock page scroll while it is open and let Escape close it,
-  // so a thumb drag on the panel never scrolls the page underneath.
+  // so a thumb drag on the panel never scrolls the page underneath. Resizing up
+  // to desktop closes it, otherwise the page would stay scroll-locked after the
+  // sidebar turns back into a permanent column.
   useEffect(() => {
     if (!mobileOpen) return;
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const onResize = () => {
+      if (desktop.matches) setMobileOpen(false);
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setMobileOpen(false);
     };
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    desktop.addEventListener("change", onResize);
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prevOverflow;
+      desktop.removeEventListener("change", onResize);
       window.removeEventListener("keydown", onKey);
     };
   }, [mobileOpen]);
@@ -282,7 +290,7 @@ export default function Home() {
   // Reads as a phrase so it can drop into a sentence, and falls back to wording
   // instead of "—" while /api/status is still in flight (SSR + first paint).
   const minRule = status?.minTokenEligibleHuman
-    ? `at least ${minEligibleHuman} ${TOKEN_NAME}`
+    ? `at least ${minEligibleHuman} ${tokenName}`
     : "the minimum balance";
   // Prose reads from the same value as the badge, so changing WINNER_COUNT in
   // settings can't leave the copy claiming a different number of winners.
@@ -344,18 +352,21 @@ export default function Home() {
   };
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Mobile backdrop */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
-          onClick={() => setMobileOpen(false)}
-          aria-hidden="true"
-        />
-      )}
+      {/* Mobile backdrop — always mounted so it fades out instead of popping. */}
+      <div
+        className={`fixed inset-0 z-30 bg-black/55 transition-opacity duration-300 ease-out motion-reduce:transition-none lg:hidden ${
+          mobileOpen ? "opacity-100 backdrop-blur-[2px]" : "pointer-events-none opacity-0"
+        }`}
+        onClick={() => setMobileOpen(false)}
+        aria-hidden="true"
+      />
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-(--border) bg-surface transition-[width,transform] duration-200 lg:translate-x-0 ${collapsed ? "lg:w-[68px]" : ""} ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-(--border) bg-surface shadow-2xl shadow-black/40 transition-[width,translate] duration-300 ease-[cubic-bezier(0.22,0.61,0.36,1)] will-change-[width,translate] motion-reduce:transition-none lg:translate-x-0 lg:shadow-none ${
+          collapsed ? "lg:w-[68px]" : ""
+        } ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        aria-label="Site navigation"
       >
         <div className={`flex h-14 shrink-0 items-center gap-2 border-b border-(--border) px-4 ${collapsed ? "lg:justify-center" : ""}`}>
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/15 text-sm font-bold text-accent">{brandInitial}</span>
@@ -372,9 +383,12 @@ export default function Home() {
           </button>
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overscroll-contain p-3">
-          {NAV.map((item) => {
+          {NAV.map((item, index) => {
             const active = isActive(item.href);
-            const cls = `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition w-full text-left ${collapsed ? "lg:justify-center lg:px-0" : ""} ${active ? "bg-default font-medium text-foreground" : "font-medium text-muted hover:bg-default/40 hover:text-foreground"}`;
+            const cls = `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition w-full text-left ${collapsed ? "lg:justify-center lg:px-0" : ""} ${active ? "bg-default font-medium text-foreground" : "font-medium text-muted hover:bg-default/40 hover:text-foreground"} ${mobileOpen ? "drawer-item-in" : ""}`;
+            // Same stagger the AppShell drawer uses: 70ms base, 22ms per row,
+            // capped at 190ms so the links land with the panel slide.
+            const itemStyle = { animationDelay: `${Math.min(70 + index * 22, 190)}ms` };
             const inner = (
               <>
                 <Icon name={item.icon} className="shrink-0 text-(--nav-icon)" />
@@ -391,6 +405,7 @@ export default function Home() {
                 title={collapsed ? item.label : undefined}
                 aria-current={active ? "page" : undefined}
                 className={cls}
+                style={itemStyle}
               >
                 {inner}
               </a>
@@ -399,7 +414,10 @@ export default function Home() {
           {/* Information — external community links pinned to the bottom of the
               nav (the grouping otcdesks.cash uses for Docs / Terms / X, minus
               the docs and terms pages this project doesn't have). */}
-          <div className="mt-auto flex flex-col gap-1 pt-2">
+          <div
+            className={`mt-auto flex flex-col gap-1 pt-2 ${mobileOpen ? "drawer-item-in" : ""}`}
+            style={{ animationDelay: `${Math.min(70 + NAV.length * 22, 190)}ms` }}
+          >
             <span
               className={`px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
             >
@@ -476,7 +494,7 @@ export default function Home() {
             <div className="relative flex flex-col gap-5 p-4 sm:p-6">
               <div className="flex flex-col gap-2">
                 <h1 className="max-w-3xl text-balance text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-                  Hold {TOKEN_NAME}. <span className="text-accent">Win the draw.</span>
+                  Hold {tokenName}. <span className="text-accent">Win the draw.</span>
                 </h1>
                 <Typography type="body-sm" color="muted" className="max-w-2xl text-pretty">
                   Hold {minRule} and you’re in. Creator fees become the prize pool, split in SOL
@@ -701,7 +719,7 @@ export default function Home() {
                   <Skeleton className="h-[22px] w-24 rounded-full" />
                 ) : (
                   <Chip size="sm" variant="soft" color="default">
-                    {status?.minTokenEligibleHuman ? `Min ${minEligibleHuman} ${TOKEN_NAME}` : "Minimum balance"}
+                    {status?.minTokenEligibleHuman ? `Min ${minEligibleHuman} ${tokenName}` : "Minimum balance"}
                   </Chip>
                 )}
               </div>
@@ -784,25 +802,28 @@ export default function Home() {
 
         {/* Completed rounds — collapsible rows: #N · Pump.fun → Pay → drand → winners */}
         <section className="pb-6 flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
+            {/* Heading and the "View all" link share one row on every width —
+                the link used to wrap under the description on phones because
+                both sat in the same flex-wrap parent as the copy. */}
+            <div className="flex items-center justify-between gap-3">
               <Typography type="h4">Recent draws</Typography>
-              {/* Describes the rows below without repeating their numbers: the
-                  collapsed row already carries #N, the pool, the age and the
-                  winner avatars, so this line only explains the affordance. */}
-              <Typography type="body-sm" color="muted">
-                Each draw, from the Pump.fun fee to the wallets it paid. Open one
-                to see the receipts.
-              </Typography>
+              <Link
+                href="/draws"
+                aria-label="View all draws"
+                className="-my-1 inline-flex shrink-0 items-center gap-1 py-1 text-sm underline transition-colors hover:text-foreground"
+              >
+                View all draws
+                <Icon name="arrow-right" className="h-3.5 w-3.5" />
+              </Link>
             </div>
-            <Link
-              href="/draws"
-              aria-label="View all draws"
-              className="-my-1 mr-0 inline-flex items-center gap-1 py-1 text-sm underline transition-colors hover:text-foreground sm:mr-5"
-            >
-              View all draws
-              <Icon name="arrow-right" className="h-3.5 w-3.5" />
-            </Link>
+            {/* Describes the rows below without repeating their numbers: the
+                collapsed row already carries #N, the pool, the age and the
+                winner avatars, so this line only explains the affordance. */}
+            <Typography type="body-sm" color="muted">
+              Each draw, from the Pump.fun fee to the wallets it paid. Open one
+              to see the receipts.
+            </Typography>
           </div>
 
           <RecentDraws
@@ -843,7 +864,7 @@ export default function Home() {
                 Disclaimer
               </p>
               <p className="mt-1 text-xs leading-relaxed text-muted">
-                The animation shows how a draw works. It doesn’t show live odds. {TOKEN_NAME} is a
+                The animation shows how a draw works. It doesn’t show live odds. {tokenName} is a
                 lottery token, not an investment. Its price is set by the Pump.fun market, prizes are
                 paid only from the creator-fee pool, and you can lose money holding it.
               </p>

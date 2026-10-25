@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { fmtTokenHuman } from "@/lib/format";
 import { effectiveMinEligibleBigint } from "@/lib/settings";
 import { getVenueAccountMap } from "@/lib/exclusions";
+import { getTokenName } from "@/lib/seo";
 import { cached } from "@/lib/cache";
 
 export const runtime = "nodejs";
@@ -60,7 +61,7 @@ async function buildEligibility(address: string) {
     | "devnet";
   const tokenDecimals = Number(process.env.TOKEN_DECIMALS ?? 6);
   const tokenMint = process.env.TOKEN_MINT || null;
-  const tokenName = process.env.TOKEN_NAME || "PAY";
+  const tokenName = await getTokenName();
   const threshold = await effectiveMinEligibleBigint();
 
   let balanceRaw = 0n;

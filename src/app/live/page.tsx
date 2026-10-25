@@ -104,7 +104,7 @@ export default function LivePage() {
 
   return (
     <AppShell title="Live">
-      <main className="mx-auto max-w-7xl px-8 lg:px-10 pt-12 sm:pt-16 pb-16 flex flex-col gap-8">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-12 sm:pt-16 pb-16 flex flex-col gap-8">
         <header className="flex flex-col gap-2">
           <p className="text-xs font-mono uppercase tracking-[0.2em] text-default-400">Live</p>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Live draw</h1>
