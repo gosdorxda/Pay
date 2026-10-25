@@ -12,7 +12,7 @@
 | Bagian | Keputusan di panduan ini | Kenapa |
 |---|---|---|
 | Runtime | Node.js **22 LTS** | Next 16 menolak Node < 20.9; 22 LTS paling stabil untuk server |
-| Proses | **systemd** (`pay.service`) | restart otomatis saat boot/crash, log ke journald, tanpa dependency global |
+| Proses | **systemd** `pay.service` (default) — atau **PM2** dengan `ecosystem.config.js` (§8b); pilih salah satu | restart otomatis saat boot/crash, log terpusat, tanpa dependency global (PM2 perlu install global) |
 | Web server | **nginx** reverse proxy + **certbot** | TLS gratis; app tetap listen di `127.0.0.1:3000` (tidak terbuka ke internet) |
 | Database | **Neon** (cloud) — pakai proyek yang sudah ada, atau bikin baru (§6.1 jalur B) | proyek ini tidak butuh PostgreSQL lokal |
 | File state | `data/buyback.json` di dalam folder app | ditulis runtime oleh Admin → Buyback |
@@ -20,7 +20,8 @@
 | Zona waktu server | **UTC** | `node-cron` memakai TZ server, sedangkan UI menjanjikan jadwal UTC |
 
 **Yang TIDAK dipakai di panduan ini:** Vercel (cron in-process tidak jalan di sana seperti ini),
-Docker (tidak ada Dockerfile di repo), PM2 (systemd lebih ringan — alternatifnya ada di §8b).
+Docker (tidak ada Dockerfile di repo), dan **dua supervisor sekaligus** (systemd **atau** PM2 §8b —
+keduanya berebut port 3000 dan menggandakan cron).
 
 ---
 
@@ -534,44 +535,185 @@ Catatan unit file:
   baris `Environment=NODE_OPTIONS=…` tadi: hook-nya sudah mengerjakan hal yang sama, flag hanya
   lapisan kedua untuk build lama.
 
-### 8b. Alternatif PM2
+### 8b. Alternatif PM2 (`ecosystem.config.js`)
 
-```bash
-sudo npm i -g pm2
-sudo -u pay pm2 start npm --name pay -- run start
-sudo -u pay pm2 save
-# daftarkan ke systemd (jalankan perintah persis seperti yang dicetak pm2, biasanya berawalan sudo env PATH=…)
-sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u pay --hp /home/pay
-```
+Pilih **salah satu**: systemd (§8a) atau PM2. Jangan dua-duanya — port 3000 bentrok dan
+`node-cron` jalan dua kali.
 
-Pakai **fork mode** (default) dengan **satu instance**. Jangan `pm2 start … -i max` — itu
-cluster mode multi-proses dan menggandakan cron. Untuk melihat log: `pm2 logs pay`.
-
-Kalau perlu `NODE_OPTIONS` (mis. `--dns-result-order=ipv4first --no-network-family-autoselection`,
-§8a — hanya untuk build lama) di PM2, pakai ecosystem file — `pm2 start npm …` tidak menerima
-`--node-args` untuk proses anak:
+Repo sudah membawa **`ecosystem.config.js`** di root, jadi yang perlu dilakukan di server cuma
+install PM2 lalu menunjuk file itu. Isinya (komentar lengkap ada di file):
 
 ```js
-// ecosystem.config.js
 module.exports = {
-  apps: [{
-    name: "pay",
-    script: "npm",
-    args: "run start",
-    env: {
-      NODE_ENV: "production",
-      PORT: "3000",
-      HOSTNAME: "127.0.0.1",
-      NODE_OPTIONS: "--dns-result-order=ipv4first --no-network-family-autoselection",
+  apps: [
+    {
+      name: "pay",
+      cwd: __dirname, // /var/www/pay — tempat .next dan .env
+      script: "npm",
+      args: "run start", // sama dengan `npm start` → next start
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      min_uptime: "20s",
+      max_restarts: 20,
+      restart_delay: 2000,
+      kill_timeout: 10000,
+      listen_timeout: 15000,
+      time: true,
+      merge_logs: true,
+      env: {
+        NODE_ENV: "production",
+        PORT: "3000",
+        HOSTNAME: "127.0.0.1",
+      },
     },
-  }],
+  ],
 };
 ```
 
-`sudo -u pay pm2 start ecosystem.config.js && sudo -u pay pm2 save`, lalu cek dengan
-`sudo -u pay pm2 env 0 | grep NODE_OPTIONS`.
+Kenapa begitu:
 
-Pilih **salah satu**: systemd atau PM2, jangan dua-duanya (port bentrok).
+- `exec_mode: "fork"` + `instances: 1` — scheduler hidup **di dalam** proses Next, jadi cluster
+  mode (`-i max`) menggandakan round/sync/payout. Ini bukan preferensi, ini syarat.
+- `cwd: __dirname` — PM2 boleh dijalankan dari folder mana pun; `next start` tetap mencari
+  `.next` dan `.env` di `/var/www/pay`.
+- `env` hanya berisi tiga variabel proses. Rahasia (`DATABASE_URL`, `ADMIN_*`, `TELEGRAM_*`,
+  `PLATFORM_*`) **tidak** ditulis di sini — `next start` membacanya sendiri dari `.env`
+  (`@next/env`), persis seperti di systemd §8a.
+- `kill_timeout: 10000` — PM2 mengirim SIGINT dan menunggu 10 dtk sebelum SIGKILL, cukup untuk
+  Next menutup koneksi Prisma. Tanpa ini restart bisa memotong request yang sedang jalan.
+- `time: true` + `merge_logs: true` — log gabungan dengan timestamp di
+  `~/.pm2/logs/pay-out.log` dan `~/.pm2/logs/pay-error.log`.
+
+#### 8b.1 Install & start (sekali saja)
+
+```bash
+cd /var/www/pay
+sudo npm i -g pm2
+pm2 --version
+
+sudo -u pay pm2 start ecosystem.config.js
+sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u pay --hp /home/pay
+sudo -u pay pm2 save
+```
+
+- Semua perintah `pm2` dijalankan sebagai user **`pay`** (`sudo -u pay …`). `sudo pm2 …` membuat
+  daemon root terpisah — daftar proses, log, dan file `data/buyback.json` jadi milik root.
+- `pm2 startup …` mencetak satu perintah `sudo env PATH=…`; jalankan **persis seperti yang
+  dicetak**. Kalau Node dipasang lewat nvm, path-nya menunjuk versi Node tertentu — setelah
+  upgrade Node, jalankan ulang `pm2 startup` (atau `pm2 update`).
+- `pm2 save` menyimpan daftar proses ke dump. Panggil **setiap** kali daftar berubah
+  (start/delete/scale); kalau tidak, saat reboot PM2 memulihkan daftar lama.
+- `pm2 startup` membuat unit systemd `pm2-pay` yang menjalankan `pm2 resurrect` saat boot. Unit
+  `pay.service` dari §8a **jangan** di-enable bersamaan.
+
+Cek hasilnya:
+
+```bash
+sudo -u pay pm2 list
+sudo -u pay pm2 show pay
+sudo -u pay pm2 logs pay --lines 60 --nostream
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/status
+systemctl status pm2-pay --no-pager
+```
+
+Yang harus terlihat: status **online**, `restarts` masih **0**, log memuat `Ready in …ms`, tidak
+ada `Missing required env var`, dan `[cron] holders synced: …` muncul tiap 5 menit — bukti
+scheduler hidup **satu** kali. `curl` harus **200**.
+
+#### 8b.2 Operasi harian
+
+```bash
+sudo -u pay pm2 list                 # status, restarts, memory, uptime
+sudo -u pay pm2 logs pay             # stream; Ctrl+C keluar tanpa mematikan app
+sudo -u pay pm2 logs pay --err --lines 100 --nostream
+sudo -u pay pm2 monit                # dashboard CPU/RAM per proses
+
+sudo -u pay pm2 restart pay                              # setelah edit `.env`
+sudo -u pay pm2 restart ecosystem.config.js --update-env # setelah edit ecosystem.config.js
+sudo -u pay pm2 stop pay
+sudo -u pay pm2 flush pay            # kosongkan file log (app tetap jalan)
+```
+
+- `restart` **wajib** setelah mengubah `.env`: `next start` membaca env saat boot, bukan tiap
+  request. `--update-env` hanya perlu kalau yang berubah adalah `env` di ecosystem (PM2 menyimpan
+  env lama di memori).
+- Di **fork mode** tidak ada zero-downtime: `pm2 reload pay` sama dengan restart (±1–2 detik 502
+  kalau ada request masuk). Jangan tergoda menyalakan cluster mode demi reload mulus — cron akan
+  dobel.
+- Log ada di `~/.pm2/logs/pay-out.log` dan `pay-error.log` (user `pay`), bukan di journald.
+
+#### 8b.3 Deploy ulang dengan PM2
+
+Sama seperti §11, hanya nama perintah supervisor-nya yang beda:
+
+```bash
+cd /var/www/pay
+
+sudo -u pay pm2 stop pay                 # WAJIB: build menimpa `.next` yang sedang dipakai
+sudo -u pay git pull                     # atau rsync ulang dari mesin dev
+sudo -u pay npm ci --include=dev
+sudo -u pay npx prisma generate
+sudo -u pay npx tsc --noEmit             # harus 0
+sudo -u pay npm run build
+sudo -u pay pm2 restart ecosystem.config.js --update-env
+sudo -u pay pm2 list
+```
+
+- `pm2 stop` dulu, bukan `pm2 restart` sesudah build: kalau app tetap hidup saat `next build`
+  menimpa `.next`, request yang masuk bisa kena `Manifest file is empty` (§13.2).
+- Rollback: `cp -a .next .next.prev` sebelum build → kalau gagal,
+  `pm2 stop pay && rm -rf .next && mv .next.prev .next && pm2 restart ecosystem.config.js --update-env`.
+- `pm2 status` harus kembali **online** dengan `restarts` bertambah satu, bukan naik terus.
+- Perubahan `prisma/schema.prisma` → tambahkan `npx prisma db push` (string **direct**, §6.1)
+  sebelum build.
+
+#### 8b.4 Rotasi log
+
+PM2 menulis log tanpa batas sampai dirotasi:
+
+```bash
+sudo -u pay pm2 install pm2-logrotate
+sudo -u pay pm2 set pm2-logrotate:max_size 10M
+sudo -u pay pm2 set pm2-logrotate:retain 14
+sudo -u pay pm2 set pm2-logrotate:compress true
+```
+
+`pm2 install` memasang modul ke daemon milik user yang menjalankannya — jalankan sebagai `pay`,
+bukan root, supaya rotasi mengenai log yang benar.
+
+#### 8b.5 Jebakan yang mahal
+
+- **Jangan dua supervisor.** Sebelum pindah dari systemd: `sudo systemctl disable --now pay`.
+  Cek tidak ada sisa: `systemctl list-units | grep -E 'pay|pm2'`,
+  `ss -ltnp | grep ':3000'`, `sudo -u pay pm2 list`.
+- **Satu instance.** `pm2 scale pay 2`, `-i max`, atau `exec_mode: "cluster"` = dua scheduler =
+  round dan sync dobel (dan payout dobel kalau lock sempat lolos).
+- **Jangan `sudo pm2 …`.** Daemon root punya `PM2_HOME=/root/.pm2`: app yang dijalankan di sana
+  menulis `data/buyback.json` sebagai root dan `pay` gagal menyimpannya nanti (§8c).
+- **`pm2 save` setelah setiap perubahan daftar.** Tanpa itu, reboot memulihkan konfigurasi lama
+  (mis. app lama yang sudah di-delete hidup lagi).
+- **`max_memory_restart` sengaja tidak diisi.** Restart otomatis di tengah round/payout bisa
+  memutus transaksi yang sedang dikirim. Kalau RAM sempit, tambah swap (§2.4), jangan memaksa
+  restart berbasis memori.
+- **`NODE_OPTIONS` hanya untuk build lama** (§8a/§13.3). Build terbaru sudah memaksa IPv4 dari
+  `src/lib/net-ipv4.ts`. Kalau memang perlu, buka komentar baris di `ecosystem.config.js`, lalu
+  `pm2 restart ecosystem.config.js --update-env` dan cek
+  `sudo -u pay pm2 env 0 | grep NODE_OPTIONS` serta log `[net] ipv4-first aktif, …`.
+- **Node via nvm.** Unit `pm2-pay` yang dibuat `pm2 startup` menyimpan path Node versi saat itu.
+  Setelah upgrade Node: `pm2 update`, lalu ulangi `pm2 startup` + `pm2 save`.
+
+#### 8b.6 Kembali ke systemd
+
+```bash
+sudo -u pay pm2 delete pay
+sudo -u pay pm2 save
+sudo env PATH=$PATH:/usr/bin pm2 unstartup systemd   # hapus unit pm2-pay
+sudo -u pay pm2 kill                                # matikan daemon (opsional)
+```
+
+Setelah itu lanjut §8a seperti biasa. Jangan menyalakan keduanya.
 
 ### 8c. Menjalankan manual (`npm start` dari SSH)
 
@@ -770,15 +912,30 @@ sudo systemctl start pay
 sudo systemctl status pay --no-pager
 ```
 
+Kalau aplikasi dijalankan lewat **PM2** (§8b), hanya baris supervisor-nya yang berubah —
+`git pull`, `npm ci`, `prisma generate`, `tsc`, dan `build` tetap sama:
+
+```bash
+sudo -u pay pm2 stop pay                 # WAJIB sebelum build, alasan sama
+# … langkah build seperti di atas …
+sudo -u pay pm2 restart ecosystem.config.js --update-env
+sudo -u pay pm2 list                     # online, restarts bertambah 1
+```
+
+`pm2 stop … → build → pm2 restart ecosystem.config.js --update-env` juga memastikan perubahan
+`env` di ecosystem ikut terbaca (PM2 menyimpan env lama di memori).
+
 - `npx prisma db push` **hanya** kalau `prisma/schema.prisma` berubah (pakai string **direct**,
   §6.1 jalur B). Fitur yang menyimpan konfigurasi di tabel `AdminSetting` — palette, SEO,
   Buyback, **Telegram bot** — tidak menambah tabel, jadi cukup `git pull` + build + restart.
 - Perubahan kode cron/tick (`src/lib/scheduler.ts`, mis. bot Telegram) baru aktif setelah
-  **build ulang + restart** (§11). `systemctl restart` saja akan menjalankan build lama.
-- `.env` berubah → cukup `sudo systemctl restart pay`, **kecuali** `NEXT_PUBLIC_*` → perlu
-  build ulang (§5.3).
+  **build ulang + restart** (§11). `systemctl restart pay` (atau `pm2 restart ecosystem.config.js
+  --update-env`) saja akan menjalankan build lama.
+- `.env` berubah → cukup `sudo systemctl restart pay` — atau, di PM2, `sudo -u pay pm2 restart pay`
+  — **kecuali** `NEXT_PUBLIC_*` → perlu build ulang (§5.3).
 - Rollback cepat: sebelum build, `sudo -u pay cp -a .next .next.prev`; kalau gagal →
   `sudo systemctl stop pay && sudo -u pay rm -rf .next && sudo -u pay mv .next.prev .next && sudo systemctl start pay`.
+  Versi PM2: `sudo -u pay pm2 stop pay && sudo -u pay rm -rf .next && sudo -u pay mv .next.prev .next && sudo -u pay pm2 restart ecosystem.config.js --update-env`.
 - Jangan menjalankan `npm run dev` di VPS produksi: cache `.next` bertabrakan dengan build
   produksi dan cron bisa membuat round sungguhan.
 
@@ -858,14 +1015,17 @@ itu normal. Pastikan SSL/TLS mode **Full (strict)** dan origin punya sertifikat 
 |---|---|---|
 | `@prisma/client did not initialize yet` | `prisma generate` belum jalan / engine hilang | `sudo -u pay npx prisma generate` lalu restart |
 | `Missing required env var: X` | `.env` tidak ada, kosong, atau tidak terbaca user `pay` | pastikan `/var/www/pay/.env` ada, `chmod 600`, `chown pay:pay`; cek `sudo -u pay node -e "require('@next/env').loadEnvConfig(process.cwd())"` |
-| `502 Bad Gateway` | app mati / port beda | `systemctl status pay`, `ss -ltnp \| grep 3000`, cek `PORT` |
+| `502 Bad Gateway` | app mati / port beda | `systemctl status pay`, `sudo -u pay pm2 list` (kalau pakai PM2), `ss -ltnp \| grep 3000`, cek `PORT` |
 | `curl http://127.0.0.1:3000` → 200 tapi domain **timeout** | 80/443 diblok di level **provider**, bukan `ufw` | buka inbound TCP 80 & 443 di Security Group / Cloud Firewall provider (§13.1) |
 | `nginx: [emerg] bind() to 0.0.0.0:80 failed` | port 80 dipakai service lain (apache2) | `sudo systemctl disable --now apache2`, cek `sudo ss -ltnp \| grep ':80 '` |
 | Build mati `Killed` | RAM habis | tambah swap (§2.4) atau `NODE_OPTIONS=--max-old-space-size=2048` |
 | `Manifest file is empty`, halaman reload sendiri | `.next` rusak (build saat service hidup) | stop service → `rm -rf .next` → build → start |
 | Login admin tidak "nempel" | cookie `secure`, situs diakses via http | pakai domain HTTPS (§9.3); `NODE_ENV` harus `production` |
 | Draw terjadi di jam yang salah | TZ server bukan UTC | `sudo timedatectl set-timezone UTC`, restart service |
-| Round/sync dobel | dua proses atau dua instance | satu service saja, fork mode, `systemctl list-units \| grep pay` |
+| Round/sync dobel | dua proses atau dua instance | satu service saja, fork mode, `systemctl list-units \| grep pay`, `sudo -u pay pm2 list` |
+| `EADDRINUSE` / app `errored` di `pm2 list` | port 3000 sudah dipakai proses lain (systemd + PM2 dobel, atau instance manual) | matikan salah satu: `sudo systemctl disable --now pay` **atau** `sudo -u pay pm2 delete pay`; cek `ss -ltnp \| grep ':3000'` |
+| `restarts` di `pm2 list` naik terus | crash loop: `.next` hilang/rusak, `.env` tidak terbaca, dependency belum terpasang | `sudo -u pay pm2 logs pay --err --lines 80 --nostream`, perbaiki, lalu `pm2 restart ecosystem.config.js --update-env` |
+| `pm2: command not found` setelah login ulang | PATH shell tidak memuat prefix npm global (nvm / `/usr/local/bin`) | `sudo -u pay /usr/local/bin/pm2 list` atau `sudo env PATH=$PATH:/usr/bin pm2 list`; pastikan `pm2 startup` dijalankan ulang setelah upgrade Node |
 | Pool & winner `—` padahal DB ada isi | `DATABASE_URL` salah / Neon suspend | cek §6.1, buka dashboard Neon |
 | Save Buyback: "read-only deployment" | `data/` tidak writable oleh `pay` | `sudo chown -R pay:pay /var/www/pay/data` |
 | `insufficient funds for rent` saat payout | wallet platform kurang SOL | isi wallet (sisakan `PRIZE_RESERVE_LAMPORTS` + fee) |
@@ -885,8 +1045,9 @@ itu normal. Pastikan SSL/TLS mode **Full (strict)** dan origin punya sertifikat 
 Log yang berguna:
 
 ```bash
-sudo journalctl -u pay -f                 # realtime
+sudo journalctl -u pay -f                 # realtime (systemd)
 sudo journalctl -u pay --since "1 hour ago" -p warning
+sudo -u pay pm2 logs pay --lines 100 --nostream   # (PM2)
 sudo tail -f /var/log/nginx/error.log
 ```
 
@@ -1148,7 +1309,8 @@ done
 - [ ] `npm run build` sukses, `npx tsc --noEmit` 0 error
 - [ ] log start memuat `[net] ipv4-first aktif, family auto-selection dimatikan` (§13.3)
 - [ ] `sudo -u pay npm run net:test` sukses (pumpdev + RPC), kartu **Admin → Creator Fees** terisi
-- [ ] service systemd `enabled` + `active`, hanya **satu** instance
+- [ ] supervisor jalan dan **hanya satu**: systemd `enabled` + `active`, **atau** PM2 `online` +
+      `pm2 save` sudah dijalankan (jangan dua-duanya) — §8a / §8b
 - [ ] nginx proxy jalan, **HTTPS** aktif, `http → https` redirect
 - [ ] `ufw` hanya 22/80/443; port 3000 tidak terekspos (`sudo ufw status verbose`)
 - [ ] diuji **dari luar** (laptop): `curl -I https://DOMAIN` → 200, bukan timeout
