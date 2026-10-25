@@ -6,7 +6,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const token = await getTokenName();
   return {
     title: "How it works",
-    description: `Hold ${token} and you are in every draw. Creator fees become the prize pool, three wallets are picked with drand randomness, and anyone can check the result.`,
+    description: `Hold ${token} and you are on the list for every draw. Creator fees fill the pool, three wallets are picked by drand, and any finished draw can be checked.`,
   };
 }
 

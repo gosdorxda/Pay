@@ -10,7 +10,7 @@ import { useSite } from "@/components/providers/SiteProvider";
 /**
  * Canonical transparency reference for the Pay lottery. Consolidates the
  * draw lifecycle, the provably-fair verification story, eligibility, payouts,
- * the run schedule, and a FAQ — all grounded in the actual mechanics in
+ * the run schedule, and a FAQ, all grounded in the actual mechanics in
  * lib/lottery/engine.ts, lib/lottery/verify.ts, and lib/solana/randomness.ts.
  *
  * The drand quicknet chain hash below is the public beacon identifier; the same
@@ -30,10 +30,10 @@ export default function HowItWorksPage() {
         <header className="pb-8 border-b border-(--border)">
           <Typography type="h4">How the lottery works</Typography>
           <Typography type="body-sm" color="muted" className="mt-1.5">
-            Hold {tokenName} and you’re in every draw — no tickets, no sign-up. Trading fees from
-            Pump.fun become the prize pool, and wallets are picked at random by drand, a
-            public randomness service nobody controls. Anyone can check a finished draw in
-            their own browser.
+            Hold at least the minimum {tokenName} and you are on the list for every draw, with
+            no tickets and no sign-up. Creator fees from Pump.fun trading fill the prize pool,
+            and the winners are picked by drand, a public randomness beacon run by independent
+            organisations. Anyone can check a finished draw in their own browser.
           </Typography>
           <div className="flex flex-wrap gap-2 mt-4">
             <Chip variant="soft" color="default">Holding is the entry</Chip>
@@ -47,58 +47,62 @@ export default function HowItWorksPage() {
         <Section title="From holder list to payout">
           <ol className="flex flex-col gap-5">
             <Step n={1} title="The holder list refreshes">
-              Every 5 minutes the app re-reads {tokenName} balances on Solana. Every wallet holding
-              at least the minimum {tokenName} goes on the list; the project’s own wallet is left
+              Every 5 minutes, by default, the app re-reads {tokenName} balances on Solana. Every
+              wallet holding at least the minimum {tokenName} goes on the list. The project
+              wallet, the bonding curve, the pool authority and any blocked addresses are left
               out. That list is what the draw picks from.
             </Step>
             <Step n={2} title="The draw asks drand for a number">
-              On the draw schedule (hourly by default) the app fetches the newest random
-              number from drand. It asks two separate drand servers for the same round and
-              refuses to draw if their answers differ.
+              On the draw schedule (hourly by default) the app fetches the newest number from
+              drand. It also asks a second drand server for the same round, and refuses to use
+              the number if the two disagree.
             </Step>
             <Step n={3} title="That number shuffles the list">
-              The number is hashed into a stream of randomness, which shuffles the holder
-              list like a deck of cards. The first wallets after the shuffle win, in rank
-              order. Same number and same list always give the same winners.
+              The number seeds a deterministic shuffle of the holder list, like a deck of
+              cards. The list is sorted by address first, so every run starts from the same
+              order, and the first wallets after the shuffle win, in rank order. The same
+              number and the same list always give the same winners.
             </Step>
             <Step n={4} title="The prize is split by rank">
-              The pool is divided by a fixed split that adds up to 100% — for example
-              50 / 30 / 20 when there are three winners. Any leftover rounding dust goes to
-              first place. If a platform fee is switched on, it comes off the top first (see
-              Where the money goes).
+              The pool is divided by a fixed split that adds up to 100%: 50 / 30 / 20 by
+              default, for three winners. Leftover rounding dust goes to first place, and so do
+              the shares of winner slots the draw could not fill. A platform fee, if enabled,
+              comes off the top first (see Where the money goes).
             </Step>
             <Step n={5} title="Winners are paid in SOL">
-              All winners are paid in the same Solana transaction — one transfer per winner,
-              sent together from the project wallet. That transaction is saved and linked
-              from every winner, so each payment can be looked up on Solana Explorer. A
-              payout shows{" "}
+              All winners are paid in one Solana transaction: a transfer per winner, sent
+              together from the project wallet. The transaction signature is saved on the draw
+              and shown next to each winner, so any payment can be looked up on Solana
+              Explorer. A winner shows{" "}
               <Chip size="sm" variant="soft" color="warning">Pending</Chip>{" "}
-              → <Chip size="sm" variant="soft" color="success">Paid</Chip>.
+              → <Chip size="sm" variant="soft" color="success">Paid</Chip>{" "}
+              once the transfer confirms.
             </Step>
           </ol>
         </Section>
 
         {/* Provably fair */}
-        <Section title="You can check any draw yourself">
+        <Section title="You can check a finished draw yourself">
           <p className="text-sm text-muted leading-relaxed">
-            Two checks, both run in your browser. Neither one trusts our server:
+            Two checks run in your browser. The first asks only drand; the second re-runs the
+            shuffle on the wallet list saved with the draw.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
             <Card title="① The random number is real">
               Your browser fetches that same drand round and confirms the number and its
-              signature are exactly what drand published — so the seed we used can’t have
+              signature are exactly what drand published, so the number we saved cannot have
               been swapped after the fact.
             </Card>
             <Card title="② The winners really came from it">
               The same number and the same holder list are shuffled again in your browser.
-              If the wallets come out in the same order, rank for rank, nobody picked them
-              by hand.
+              If the wallets come out in the same order, rank for rank, the winners follow
+              from those two inputs.
             </Card>
           </div>
 
           <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-4 border-t border-(--border) pt-6 mt-6">
             <Fact label="Beacon" value="quicknet" />
-            <Fact label="Signature type" value="BLS-unchained-G1" />
+            <Fact label="Signature scheme" value="BLS unchained G1" hint="RFC 9380" />
             <Fact label="New number" value="every 3s" />
             <Fact label="Sources" value="drand.sh · cloudflare" />
           </dl>
@@ -114,10 +118,11 @@ export default function HowItWorksPage() {
         {/* Eligibility */}
         <Section title={`Hold ${tokenName}. That’s the whole entry.`}>
           <p className="text-sm text-muted leading-relaxed">
-            There is nothing to buy and nothing to sign. If your wallet holds at least the
-            minimum {tokenName} when a draw runs, you are in — once per draw, with the same chance
-            as every other wallet on the list. The list refreshes every 5 minutes, so a
-            recent buy counts before the next draw.
+            No ticket to buy and nothing to sign. If your wallet holds at least the minimum{" "}
+            {tokenName} in the snapshot a draw uses, you are in, once per draw, with the same
+            chance as every other wallet on the list. Holding more does not improve the odds:
+            one wallet is one entry. The list refreshes every 5 minutes, so a buy may take up to
+            five minutes to count.
           </p>
           <div className="pt-4">
             <NavLink href="/eligibility">Check your wallet</NavLink>
@@ -127,20 +132,22 @@ export default function HowItWorksPage() {
         {/* Payouts */}
         <Section title="Where the money goes">
           <p className="text-sm text-muted leading-relaxed">
-            The pool is SOL held by the project: the creator fees that Pump.fun pays on {tokenName}
-            trading, minus a small reserve (about 0.05&nbsp;SOL) kept for network fees. When
-            a draw pays out, everything above that reserve goes to the winners.
+            The pool is the SOL in the project wallet, mostly creator fees that Pump.fun pays on{" "}
+            {tokenName} trading. A small reserve (about 0.05&nbsp;SOL) stays behind for network
+            fees, and by default everything above it is paid out. If the pool is at or below
+            that reserve, or below a minimum prize when one is set, the draw is skipped instead
+            of run.
           </p>
           <p className="text-sm text-muted leading-relaxed">
             A platform fee is off by default (0%). If one is switched on, it is taken from
-            the pool <em>before</em> the split and sent to a separate treasury wallet in the
-            same transaction — so it never goes back into a future prize. The fee never
-            changes who wins, only how much is split between them.
+            the pool <em>before</em> the split. When a treasury wallet is configured, the fee
+            leaves in the same transaction as the payouts; without one, it stays on the
+            project wallet. The fee changes how much is split, never who wins.
           </p>
           <p className="text-sm text-muted leading-relaxed">
-            All payouts for a draw leave in one transaction. If that transaction fails,
-            nothing moves on-chain, the draw is marked failed, and the next draw starts from a
-            clean slate.
+            All payouts for a draw leave in one transaction. If that transaction fails, nothing
+            moves on-chain: no winner is recorded and the draw is marked failed. The next draw
+            starts from a clean slate.
           </p>
         </Section>
 
@@ -148,11 +155,11 @@ export default function HowItWorksPage() {
         <Section title="How often things run">
           <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Fact label="Draws" value="Hourly" hint="top of the hour, by default" />
-            <Fact label="Holder list" value="Every 5 min" hint="refreshes who is eligible" />
+            <Fact label="Holder list" value="Every 5 min" hint="by default, refreshes who is eligible" />
             <Fact label="drand" value="Every 3 s" hint="a new number is always ready" />
           </dl>
           <p className="text-sm text-muted pt-4">
-            The schedule can be changed. The home page shows a countdown to the next draw.
+            Both schedules are configurable. The home page shows a countdown to the next draw.
           </p>
         </Section>
 
@@ -160,8 +167,8 @@ export default function HowItWorksPage() {
         <Section title="Common questions">
           <div className="flex flex-col divide-y divide-(--border) border-y border-(--border)">
             <Faq q="Do I need to register or buy a ticket?">
-              No. Hold at least the minimum {tokenName} and you are in every draw automatically.
-              Check your wallet on the{" "}
+              No. Hold at least the minimum {tokenName} and your wallet is on the list for the
+              next draw automatically. Check your wallet on the{" "}
               <Link
                 href="/eligibility"
                 className="text-foreground underline decoration-(--border) underline-offset-4 transition-colors hover:decoration-(--muted)"
@@ -171,47 +178,54 @@ export default function HowItWorksPage() {
               page.
             </Faq>
             <Faq q="Can the team choose who wins?">
-              No. Winners come from the drand number and the holder list, and both are public.
-              The same inputs always produce the same winners, so you can re-run any draw
-              yourself.
+              Not by picking them. Winners are the first wallets after a deterministic shuffle
+              of the eligible list by the drand number. The team can leave non-player accounts
+              out of that list, such as the bonding curve and the pool authority, but the filter
+              runs before the shuffle and the exact list is saved with the draw, so anyone can
+              re-run it.
             </Faq>
             <Faq q="What stops the randomness from being rigged?">
               The number comes from drand, which is run by independent organisations and signs
-              every value it publishes. Each draw is checked against two separate drand servers,
-              and the draw is skipped if they disagree. The signature stays checkable forever.
+              every value it publishes. The app also asks a second drand server for the same
+              round and abandons the draw if the two disagree. The signature stays checkable
+              forever, so the number can be confirmed afterwards.
             </Faq>
             <Faq q="When exactly am I entered?">
-              At draw time, from the holder list. The list refreshes every 5 minutes, so a buy
-              made just before a draw may only count for the next one.
+              At draw time, from the newest holder snapshot. That snapshot is at most five
+              minutes old, so a buy made just before a draw may only count for the next one.
             </Faq>
             <Faq q="How are prizes paid?">
               In SOL, sent straight to each winner’s wallet. All winners in a draw are paid in
-              the same transaction, which keeps its signature and links to Solana Explorer.
-              Status goes{" "}
+              the same transaction, whose signature is saved and linked to Solana Explorer. A
+              winner shows{" "}
               <Chip size="sm" variant="soft" color="warning">Pending</Chip> →{" "}
-              <Chip size="sm" variant="soft" color="success">Paid</Chip>.
+              <Chip size="sm" variant="soft" color="success">Paid</Chip>{" "}
+              once the transfer confirms.
             </Faq>
             <Faq q="Is there a platform fee?">
-              By default, no. If one is enabled it comes out of the pool before the split and
-              goes to a separate treasury wallet — never back into a future prize.
+              By default, no. If one is enabled it comes out of the pool before the split. With
+              a treasury wallet configured it is sent there in the payout transaction; without
+              one it stays on the project wallet.
             </Faq>
             <Faq q="How many winners per draw, and how is the prize split?">
-              Each draw has a fixed number of winners, ranked 1 to N. The pool follows a fixed
-              split that adds up to 100%, and any rounding remainder goes to first place.
+              Three by default, ranked 1 to 3, on a 50 / 30 / 20 split. The split is fixed and
+              adds up to 100%. If a draw has fewer eligible wallets than winner slots, only
+              those wallets are paid, and the unclaimed shares roll into first place along with
+              any rounding remainder.
             </Faq>
             <Faq q="Which network does this run on?">
-              Solana mainnet or devnet, depending on the deployment. The network is shown at the
-              bottom of the sidebar.
+              Solana mainnet, or devnet for a test deployment. Explorer links follow whichever
+              network the deployment is on.
             </Faq>
           </div>
         </Section>
 
-        {/* CTA — view draws */}
+        {/* CTA: view draws */}
         <section className="pt-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <p className="text-sm text-muted">
-              Want to see it in action? Every finished draw and its winners are on the
-              Draws page.
+              Want to see it in action? Every finished draw is on the Draws page, with its
+              winners or the reason it was skipped.
             </p>
             <Link
               href="/draws"
@@ -244,7 +258,7 @@ function Section({
   );
 }
 
-/** In-app action link — the quiet muted + arrow recipe of `ExternalLink`, no new tab. */
+/** In-app action link: the quiet muted + arrow recipe of `ExternalLink`, no new tab. */
 function NavLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
