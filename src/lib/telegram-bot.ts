@@ -542,6 +542,9 @@ async function callTelegram<T = unknown>(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     cache: "no-store",
+    // Bounded: this also runs inside the draw path, so a black-holed connection
+    // must fail fast instead of stalling the round for the default timeout.
+    signal: AbortSignal.timeout(10_000),
   });
   const body = (await res.json().catch(() => null)) as
     | { ok?: boolean; result?: T; description?: string }
