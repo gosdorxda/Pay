@@ -32,6 +32,10 @@ export const SEO_KEYS = {
   siteUrl: "SEO_SITE_URL",
   ogImage: "SEO_OG_IMAGE",
   twitterHandle: "SEO_TWITTER_HANDLE",
+  /** Full profile URL — the sidebar's X link reads this (Admin → SEO). */
+  xUrl: "SEO_X_URL",
+  /** Full t.me/… link — the sidebar's Telegram entry reads this. */
+  telegramUrl: "SEO_TELEGRAM_URL",
   gaMeasurementId: "SEO_GA_MEASUREMENT_ID",
   allowIndexing: "SEO_ALLOW_INDEXING",
   googleSiteVerification: "SEO_GOOGLE_VERIFICATION",
@@ -57,6 +61,10 @@ export interface SiteSeo {
   ogImage: string;
   /** X / Twitter handle without the leading @. */
   twitterHandle: string;
+  /** Full X profile URL (https://x.com/handle) used by the sidebar links. */
+  xUrl: string;
+  /** Full Telegram link (https://t.me/…). Empty = the entry is hidden. */
+  telegramUrl: string;
   /** GA4 measurement ID (G-XXXXXXX). Empty = analytics disabled. */
   gaMeasurementId: string;
   /** false → robots noindex,nofollow site-wide. */
@@ -84,6 +92,8 @@ export const SEO_DEFAULTS: SiteSeo = {
   siteUrl: envSiteUrl.replace(/\/+$/, ""),
   ogImage: "",
   twitterHandle: "",
+  xUrl: "",
+  telegramUrl: "",
   gaMeasurementId: envGaId,
   allowIndexing: true,
   googleSiteVerification: "",
@@ -237,6 +247,8 @@ export function normalizeSeoInput(input: unknown): SiteSeo {
       /^@+/,
       ""
     ),
+    xUrl: str("xUrl", SEO_DEFAULTS.xUrl),
+    telegramUrl: str("telegramUrl", SEO_DEFAULTS.telegramUrl),
     gaMeasurementId: str("gaMeasurementId", SEO_DEFAULTS.gaMeasurementId),
     allowIndexing,
     googleSiteVerification: str(
@@ -275,6 +287,17 @@ export function validateSeo(seo: SiteSeo): SeoErrors {
   }
   if (seo.twitterHandle && !/^[A-Za-z0-9_]{1,15}$/.test(seo.twitterHandle)) {
     errors.twitterHandle = "Handle only, without @ (max 15 characters).";
+  }
+  if (seo.xUrl) {
+    const ok =
+      isHttpUrl(seo.xUrl) && /^https?:\/\/(www\.)?(x|twitter)\.com\//i.test(seo.xUrl);
+    if (!ok) errors.xUrl = "Use a full X/Twitter profile URL, e.g. https://x.com/drawfi.";
+  }
+  if (seo.telegramUrl) {
+    const ok =
+      isHttpUrl(seo.telegramUrl) &&
+      /^https?:\/\/(www\.)?(t\.me|telegram\.me|telegram\.dog)\//i.test(seo.telegramUrl);
+    if (!ok) errors.telegramUrl = "Use a full Telegram link, e.g. https://t.me/drawfi.";
   }
   if (seo.gaMeasurementId && !/^G-[A-Z0-9]{4,20}$/i.test(seo.gaMeasurementId)) {
     errors.gaMeasurementId = "GA4 IDs look like G-XXXXXXXXXX.";

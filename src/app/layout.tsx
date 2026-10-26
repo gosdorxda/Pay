@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { createHash } from "node:crypto";
 import Script from "next/script";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
@@ -41,10 +42,19 @@ export async function generateMetadata(): Promise<Metadata> {
     : undefined;
   const handle = seo.twitterHandle ? `@${seo.twitterHandle}` : undefined;
   const favicon = parseFavicon(seo.favicon);
+  // Browsers keep favicons in a cache that ignores normal headers, so the URL
+  // itself has to change when the upload changes: the hash makes every new icon
+  // a new address (and the old one unreachable), which is what finally makes a
+  // re-upload show up without clearing the browser cache.
+  const faviconVersion = favicon
+    ? createHash("sha1").update(seo.favicon).digest("hex").slice(0, 10)
+    : "";
+  const iconUrl = `/api/favicon?v=${faviconVersion}`;
   const icons = favicon
     ? {
-        icon: [{ url: "/api/favicon", type: favicon.mime }],
-        shortcut: [{ url: "/api/favicon", type: favicon.mime }],
+        icon: [{ url: iconUrl, type: favicon.mime }],
+        shortcut: [{ url: iconUrl, type: favicon.mime }],
+        apple: [{ url: iconUrl, type: favicon.mime }],
       }
     : undefined;
 
@@ -159,6 +169,7 @@ export default async function RootLayout({
           <SiteProvider
             value={{
               brandName: seo.brandName,
+              social: { x: seo.xUrl, telegram: seo.telegramUrl },
               tokenName: seo.tokenName,
               siteTitle: seo.siteTitle,
               description: seo.description,

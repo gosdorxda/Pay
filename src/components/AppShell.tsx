@@ -17,7 +17,18 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { brandName } = useSite();
+  const { brandName, social } = useSite();
+  // Admin → SEO owns the URLs; an empty field hides that entry (never a dead
+  // link to x.com / t.me's front page).
+  const socialLinks = INFORMATION.map((item) => ({
+    ...item,
+    href:
+      item.icon === "x"
+        ? social.x
+        : item.icon === "telegram"
+          ? social.telegram
+          : "",
+  })).filter((item) => item.href.trim().length > 0);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -105,18 +116,20 @@ export function AppShell({
             );
           })}
           {/* Social media — external community links pinned to the bottom of the
-              nav (the grouping otcdesks.cash uses for Docs / Terms / X, minus
-              the docs and terms pages this project doesn't have). */}
-          <div
-            className={`mt-auto flex flex-col gap-1 pt-2 ${mobileOpen ? "drawer-item-in" : ""}`}
-            style={{ animationDelay: `${Math.min(70 + NAV.length * 22, 190)}ms` }}
-          >
-            <span
-              className={`px-3 pb-1 text-xs font-normal uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
+              nav. The URLs come from Admin → SEO (X profile URL / Telegram
+              link); an unset one is simply hidden instead of pointing at
+              x.com's homepage. */}
+          {socialLinks.length > 0 && (
+            <div
+              className={`mt-auto flex flex-col gap-1 pt-2 ${mobileOpen ? "drawer-item-in" : ""}`}
+              style={{ animationDelay: `${Math.min(70 + NAV.length * 22, 190)}ms` }}
             >
-              Social media
-            </span>
-            {INFORMATION.map((item) => (
+              <span
+                className={`px-3 pb-1 text-xs font-normal uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
+              >
+                Social media
+              </span>
+              {socialLinks.map((item) => (
               <a
                 key={item.label}
                 href={item.href}
@@ -133,8 +146,9 @@ export function AppShell({
                   className={`ml-auto h-3.5 w-3.5 opacity-50 ${collapsed ? "lg:hidden" : ""}`}
                 />
               </a>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </nav>
         <div className="hidden shrink-0 border-t border-(--border) p-3 lg:block">
           <button

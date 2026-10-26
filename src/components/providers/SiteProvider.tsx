@@ -12,6 +12,8 @@ import { createContext, useContext } from "react";
  */
 export type SiteBrand = {
   brandName: string;
+  /** Public social links (Admin → SEO). Empty string = hide the entry. */
+  social: { x: string; telegram: string };
   /** Token ticker (e.g. "PAY") — one admin setting, read by every page. */
   tokenName: string;
   siteTitle: string;
@@ -20,6 +22,7 @@ export type SiteBrand = {
 
 const FALLBACK: SiteBrand = {
   brandName: "Pay",
+  social: { x: "", telegram: "" },
   tokenName: "PAY",
   siteTitle: "PAY Token Lottery",
   description:

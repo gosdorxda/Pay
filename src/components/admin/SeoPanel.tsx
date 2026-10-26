@@ -30,6 +30,8 @@ type SeoView = {
   siteUrl: string;
   ogImage: string;
   twitterHandle: string;
+  xUrl: string;
+  telegramUrl: string;
   gaMeasurementId: string;
   allowIndexing: boolean;
   googleSiteVerification: string;
@@ -54,6 +56,8 @@ const EMPTY: SeoView = {
   siteUrl: "",
   ogImage: "",
   twitterHandle: "",
+  xUrl: "",
+  telegramUrl: "",
   gaMeasurementId: "",
   allowIndexing: true,
   googleSiteVerification: "",
@@ -441,6 +445,34 @@ export function SeoPanel() {
                     isInvalid={!!errors.twitterHandle}
                   >
                     <Input placeholder="paytoken" />
+                  </TextField>
+                </Field>
+                <Field
+                  label="X profile URL"
+                  hint="Sidebar link target, e.g. https://x.com/drawfi. Empty hides the entry."
+                  error={errors.xUrl}
+                >
+                  <TextField
+                    aria-label="X profile URL"
+                    value={draft.xUrl}
+                    onChange={(v) => set("xUrl", v)}
+                    isInvalid={!!errors.xUrl}
+                  >
+                    <Input placeholder="https://x.com/drawfi" inputMode="url" />
+                  </TextField>
+                </Field>
+                <Field
+                  label="Telegram link"
+                  hint="Channel or group, e.g. https://t.me/drawfi. Empty hides the entry."
+                  error={errors.telegramUrl}
+                >
+                  <TextField
+                    aria-label="Telegram link"
+                    value={draft.telegramUrl}
+                    onChange={(v) => set("telegramUrl", v)}
+                    isInvalid={!!errors.telegramUrl}
+                  >
+                    <Input placeholder="https://t.me/drawfi" inputMode="url" />
                   </TextField>
                 </Field>
               </div>

@@ -300,7 +300,17 @@ export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
-  const { brandName, tokenName } = useSite();
+  const { brandName, tokenName, social } = useSite();
+  // Sidebar social links are admin-editable (Admin → SEO); empty = hidden.
+  const socialLinks = INFORMATION.map((item) => ({
+    ...item,
+    href:
+      item.icon === "x"
+        ? social.x
+        : item.icon === "telegram"
+          ? social.telegram
+          : "",
+  })).filter((item) => item.href.trim().length > 0);
 
   // Mobile drawer: lock page scroll while it is open and let Escape close it,
   // so a thumb drag on the panel never scrolls the page underneath. Resizing up
@@ -564,37 +574,38 @@ export default function Home() {
               </Link>
             );
           })}
-          {/* Social media — external community links pinned to the bottom of the
-              nav (the grouping otcdesks.cash uses for Docs / Terms / X, minus
-              the docs and terms pages this project doesn't have). */}
-          <div
-            className={`mt-auto flex flex-col gap-1 pt-2 ${mobileOpen ? "drawer-item-in" : ""}`}
-            style={{ animationDelay: `${Math.min(70 + NAV.length * 22, 190)}ms` }}
-          >
-            <span
-              className={`px-3 pb-1 text-xs font-normal uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
+          {/* Social media — URLs come from Admin → SEO; an unset one is hidden
+              rather than linking to x.com / t.me's front page. */}
+          {socialLinks.length > 0 && (
+            <div
+              className={`mt-auto flex flex-col gap-1 pt-2 ${mobileOpen ? "drawer-item-in" : ""}`}
+              style={{ animationDelay: `${Math.min(70 + NAV.length * 22, 190)}ms` }}
             >
-              Social media
-            </span>
-            {INFORMATION.map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                target="_blank"
-                rel="noreferrer noopener"
-                onClick={() => setMobileOpen(false)}
-                title={collapsed ? item.label : undefined}
-                className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted transition hover:bg-default/40 hover:text-foreground ${collapsed ? "lg:justify-center lg:px-0" : ""}`}
+              <span
+                className={`px-3 pb-1 text-xs font-normal uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
               >
-                <Icon name={item.icon} className="shrink-0 text-(--nav-icon)" />
-                <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
-                <Icon
-                  name="arrow-up-right"
-                  className={`ml-auto h-3.5 w-3.5 opacity-50 ${collapsed ? "lg:hidden" : ""}`}
-                />
-              </a>
-            ))}
-          </div>
+                Social media
+              </span>
+              {socialLinks.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  onClick={() => setMobileOpen(false)}
+                  title={collapsed ? item.label : undefined}
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted transition hover:bg-default/40 hover:text-foreground ${collapsed ? "lg:justify-center lg:px-0" : ""}`}
+                >
+                  <Icon name={item.icon} className="shrink-0 text-(--nav-icon)" />
+                  <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
+                  <Icon
+                    name="arrow-up-right"
+                    className={`ml-auto h-3.5 w-3.5 opacity-50 ${collapsed ? "lg:hidden" : ""}`}
+                  />
+                </a>
+              ))}
+            </div>
+          )}
         </nav>
         <div className="hidden shrink-0 border-t border-(--border) p-3 lg:block">
           <button
