@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CircleCheck, CircleX, Clock, Minus } from "lucide-react";
 import { Button, Chip } from "@heroui/react";
@@ -41,8 +41,25 @@ type RoundsResponse = {
   network: string;
   chain: Chain;
   rounds: Round[];
+  /** Rows matching the current filter (not the page). */
+  total: number;
+  totals: {
+    all: number;
+    completed: number;
+    failed: number;
+    skipped: number;
+    /** SOL actually sent to winners, all-time. */
+    paidSol: number;
+  };
+  latest: { roundNumber: number; status: string; at: string | null } | null;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
   dbError: string | null;
 };
+
+/** Rows per page. Server-paginated, so this is a page size, not a window cap. */
+const PAGE_SIZE = 10;
 
 const shortAddr = (a: string, h = 4, t = 4): string =>
   !a || a.length <= h + t ? a : `${a.slice(0, h)}…${a.slice(-t)}`;
@@ -51,41 +68,6 @@ const explorer = (v: string, kind: "address" | "tx", net: string): string =>
     net === "devnet" ? "?cluster=devnet" : ""
   }`;
 const fmtTime = (iso: string | null): string => fmtDateTimeUtc(iso);
-
-/**
- * Median interval (ms) between consecutive draws, derived from each round's
- * `startedAt`. Returns null when fewer than two usable timestamps exist.
- * Powers the "Draw interval" header stat — it reflects the real cadence of the
- * schedule (e.g. an every-5-minutes lottery lands at ~5 min) without needing the
- * raw cron string, which isn't part of the rounds payload.
- */
-function medianDrawIntervalMs(rounds: { startedAt: string }[]): number | null {
-  if (rounds.length < 2) return null;
-  const ts = rounds
-    .map((r) => Date.parse(r.startedAt))
-    .filter((t) => !Number.isNaN(t))
-    .sort((a, b) => a - b);
-  if (ts.length < 2) return null;
-  const diffs: number[] = [];
-  for (let i = 1; i < ts.length; i++) diffs.push(ts[i] - ts[i - 1]);
-  if (diffs.length === 0) return null;
-  diffs.sort((a, b) => a - b);
-  const mid = Math.floor(diffs.length / 2);
-  return diffs.length % 2 ? diffs[mid] : Math.round((diffs[mid - 1] + diffs[mid]) / 2);
-}
-
-/** Concise human duration from milliseconds, e.g. 300000 → "5 min". */
-function fmtDuration(ms: number | null): string {
-  if (ms == null || !Number.isFinite(ms) || ms <= 0) return "—";
-  const sec = Math.round(ms / 1000);
-  if (sec < 60) return `${sec}s`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} min`;
-  const hr = Math.floor(min / 60);
-  const remMin = min % 60;
-  if (hr < 24) return remMin ? `${hr}h ${remMin}m` : `${hr}h`;
-  return `${Math.floor(hr / 24)}d`;
-}
 
 /** Tailwind classes for a circular rank badge, tiered like a podium.
  *  Subtle tints (gold / silver / bronze) instead of saturated gradients so
@@ -190,31 +172,39 @@ export default function DrawsList({
   const [data, setData] = useState<RoundsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(5);
+  /** Zero-based page. The API does the slicing, so the browser never holds more
+   *  than one page of rounds (each with winners). */
+  const [page, setPage] = useState(0);
 
-  const fetchRounds = useCallback(async (silent = false) => {
-    if (!silent) {
-      setLoading(true);
-      setErr(null);
-    }
-    try {
-      const r = await fetch("/api/rounds", { cache: "no-store" });
-      setData((await r.json()) as RoundsResponse);
-      setErr(null);
-    } catch (e) {
-      // A failed background refresh keeps the last good snapshot on screen; only
-      // a first load owns the error state.
+  const fetchRounds = useCallback(
+    async (silent = false) => {
       if (!silent) {
-        setErr((e as Error).message);
-        setData(null);
+        setLoading(true);
+        setErr(null);
       }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
+      try {
+        const r = await fetch(
+          `/api/rounds?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`,
+          { cache: "no-store" }
+        );
+        setData((await r.json()) as RoundsResponse);
+        setErr(null);
+      } catch (e) {
+        // A failed background refresh keeps the last good snapshot on screen;
+        // only a first load owns the error state.
+        if (!silent) {
+          setErr((e as Error).message);
+          setData(null);
+        }
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [page]
+  );
 
   /* First load, then a quiet 15 s refresh — the same window the API caches, so a
-     tab left open keeps "Latest draw" honest and picks up newly settled rounds
+     tab left open keeps the current page honest and picks up newly settled rounds
      without flashing the skeletons. Skipped while the tab is in the background. */
   useEffect(() => {
     fetchRounds();
@@ -224,56 +214,75 @@ export default function DrawsList({
     return () => window.clearInterval(id);
   }, [fetchRounds]);
 
+  /* A reset (or a fresh clone) can shrink the history under the current page.
+     Clamp to the last real page instead of storing a corrected value, so the
+     refetch that follows lands on a page that exists. */
+  const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
+  useEffect(() => {
+    if (data && page > pageCount - 1) setPage(pageCount - 1);
+  }, [data, page, pageCount]);
+
   const net = data?.network ?? "mainnet";
   const chain = data?.chain;
-  const visibleRounds = data?.rounds.slice(0, visibleCount) ?? [];
+  const rounds = data?.rounds ?? [];
+  const totals = data?.totals;
+  const latest = data?.latest ?? null;
+  const firstShown = rounds.length === 0 ? 0 : page * PAGE_SIZE + 1;
+  const lastShown = page * PAGE_SIZE + rounds.length;
+  const listTop = useRef<HTMLDivElement>(null);
 
-  // Summary stats for the header bar. `totalPaid` counts only winners whose
-  // payout actually landed (payoutTx set · the tx is atomic, so this is money
-  // that moved), and both figures describe the loaded page of rounds — the API
-  // caps it at the latest 50, which the note under the card spells out.
-  const totalRounds = data?.rounds.length ?? 0;
-  const totalPaid =
-    data?.rounds.reduce(
-      (sum, r) =>
-        sum +
-        r.winners.reduce((s, w) => s + (w.payoutTx ? w.amountSol : 0), 0),
-      0,
-    ) ?? 0;
-  const latestRound = data?.rounds[0] ?? null;
-  const latestDrawTime = latestRound?.completedAt ?? latestRound?.startedAt ?? null;
-  const drawIntervalMs = medianDrawIntervalMs(data?.rounds ?? []);
+  /** Pager handler: new page, then bring the list back into view (the controls
+   *  sit under it, so without this the new rows load off-screen above). */
+  const goToPage = (next: number) => {
+    setPage(Math.max(0, Math.min(pageCount - 1, next)));
+    listTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // Every figure in the summary is all-time, straight from the API's totals —
+  // nothing is derived from the 10 rows on screen any more.
+  const pct = (n: number) =>
+    totals && totals.all > 0 ? Math.round((n / totals.all) * 100) : 0;
 
   return (
-    <div className={className}>
-      {/* Summary stats card */}
+    <div className={className} ref={listTop}>
+      {/* Summary stats card — all-time, from the API's totals */}
       {data && !loading && (
         <div className="mb-6 overflow-hidden rounded-lg border border-(--border)">
           <div className="grid grid-cols-2 gap-px bg-(--border) sm:grid-cols-4">
             <Stat
               label="Draws"
-              value={<CountUp value={totalRounds} />}
-              caption="settled rounds"
+              value={<CountUp value={totals?.all ?? 0} />}
+              caption={`${totals?.completed ?? 0} completed`}
+            />
+            <Stat
+              label="Skipped"
+              value={<CountUp value={totals?.skipped ?? 0} />}
+              caption={
+                (totals?.failed ?? 0) > 0
+                  ? `${pct(totals?.skipped ?? 0)}% · ${totals?.failed} failed`
+                  : `${pct(totals?.skipped ?? 0)}% of draws`
+              }
             />
             <Stat
               label="Paid out"
-              value={<CountUp value={totalPaid} format={(n) => fmtSolNum(n)} />}
+              value={
+                <CountUp value={totals?.paidSol ?? 0} format={(n) => fmtSolNum(n)} />
+              }
               caption="SOL to winners"
             />
             <Stat
-              label="Draw interval"
-              value={fmtDuration(drawIntervalMs)}
-              caption="median gap between rounds"
-            />
-            <Stat
               label="Latest draw"
-              value={timeAgo(latestDrawTime)}
-              caption={latestRound ? `draw #${latestRound.roundNumber}` : "no draws yet"}
+              value={timeAgo(latest?.at ?? null)}
+              caption={
+                latest
+                  ? `draw #${latest.roundNumber} · ${statusLabel(latest.status)}`
+                  : "no draws yet"
+              }
             />
           </div>
           <div className="border-t border-(--border) px-4 py-2 sm:px-5">
             <p className="text-xs text-muted">
-              Showing up to 50 settled draws.
+              Every settled draw, newest first — skipped and failed rounds included.
             </p>
           </div>
         </div>
@@ -285,8 +294,8 @@ export default function DrawsList({
           <div className="mb-6 overflow-hidden rounded-lg border border-(--border)">
             <div className="grid grid-cols-2 gap-px bg-(--border) sm:grid-cols-4">
               <StatSkeleton label="Draws" />
+              <StatSkeleton label="Skipped" />
               <StatSkeleton label="Paid out" />
-              <StatSkeleton label="Draw interval" />
               <StatSkeleton label="Latest draw" />
             </div>
           </div>
@@ -315,7 +324,7 @@ export default function DrawsList({
         </div>
       )}
 
-      {visibleRounds.map((r) => (
+      {rounds.map((r) => (
         <div
           key={r.roundNumber}
           className="rounded-lg border border-(--border) bg-surface px-5 py-4 mb-4"
@@ -466,15 +475,35 @@ export default function DrawsList({
         </div>
       ))}
 
-      {data && !loading && data.rounds.length > visibleCount && (
-        <Button
-          variant="outline"
-          size="md"
-          className="self-center my-2"
-          onPress={() => setVisibleCount((c) => c + 5)}
-        >
-          Load more ({data.rounds.length - visibleCount} remaining)
-        </Button>
+      {data && !loading && data.total > 0 && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-(--border) pt-4 pb-2">
+          <p className="text-xs text-muted tabular-nums">
+            Showing {firstShown}–{lastShown} of {data.total} settled draws
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onPress={() => goToPage(page - 1)}
+              isDisabled={page === 0}
+            >
+              <Icon name="arrow-left" className="h-3 w-3" />
+              Prev
+            </Button>
+            <span className="text-xs text-muted tabular-nums">
+              Page {page + 1} / {pageCount}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onPress={() => goToPage(page + 1)}
+              isDisabled={page >= pageCount - 1}
+            >
+              Next
+              <Icon name="arrow-left" className="h-3 w-3 rotate-180" />
+            </Button>
+          </div>
+        </div>
       )}
 
     </div>

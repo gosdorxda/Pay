@@ -10,7 +10,7 @@ export const NAV: NavItem[] = [
   { label: "Home", href: "/", icon: "home" },
   { label: "Draws", href: "/draws", icon: "draws" },
   { label: "Eligibility", href: "/eligibility", icon: "user-check" },
-  { label: "Treasury", href: "/treasury", icon: "landmark" },
+  { label: "Treasury", href: "/treasury", icon: "wallet-minimal" },
   { label: "Stats", href: "/stats", icon: "chart-line" },
   { label: "Verify", href: "/verify", icon: "check" },
   { label: "How it works", href: "/how-it-works", icon: "circle-question-mark" },

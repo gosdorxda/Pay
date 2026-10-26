@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
@@ -94,7 +94,7 @@ type RoundsResp = {
  * The slice of /api/stats the hero needs: all-time completed draws, the SOL
  * that actually left the pool and how many payouts went out. Aggregated
  * server-side over every round, so the numbers stay correct past the
- * 50-round window /api/rounds returns.
+ * paged `/api/rounds` history.
  */
 type StatsTotals = {
   draws: number;
@@ -161,7 +161,12 @@ const rankMedal = (rank: number): string => {
     case 2:
       return "bg-linear-to-br from-slate-100 via-slate-300 to-slate-400 text-slate-800 shadow-sm shadow-slate-500/30";
     case 3:
-      return "bg-linear-to-br from-orange-200 via-orange-300 to-orange-500 text-orange-950 shadow-sm shadow-orange-500/30";
+      // Exactly the tint the flow's winner-3 bubble uses
+      // (`bg-orange-100 text-orange-900 ring-orange-200`): a soft bronze, not a
+      // gradient. The earlier deep copper (700→900) read as red, and the first
+      // version (200→500) competed with gold — flat + pale keeps third place
+      // clearly below the two bright medals.
+      return "bg-orange-100 text-orange-900 shadow-sm";
     default:
       return "bg-default text-muted";
   }
@@ -177,7 +182,11 @@ const rankBar = (rank: number): string => {
     case 2:
       return "bg-linear-to-r from-slate-500 via-slate-400 to-slate-300";
     case 3:
-      return "bg-linear-to-r from-orange-500 via-orange-400 to-orange-300";
+      // Same family as the flow's winner-3 bubble (bg-orange-100 / ring
+      // orange-200): flat `orange-200`, one step stronger than the medal so the
+      // fill still separates from the track. No gradient — third place should
+      // recede behind gold and silver, not shimmer.
+      return "bg-orange-200";
     default:
       return "bg-accent";
   }
@@ -215,16 +224,36 @@ const PRIZE_POOL_IMAGE = "/prizepool_image.png";
  */
 function PrizePoolArt({ className = "" }: { className?: string }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  // A cached image can finish before hydration, in which case `onLoad` never
+  // fires — check `complete` once on mount so the skeleton can't get stuck.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth > 0) setLoaded(true);
+  }, []);
+
   if (failed) return <PoolArt className={className} />;
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={PRIZE_POOL_IMAGE}
-      alt=""
-      aria-hidden="true"
-      onError={() => setFailed(true)}
-      className={`shrink-0 object-contain ${className}`}
-    />
+    <>
+      {/* Skeleton until the PNG paints, then a 300 ms cross-fade into the art —
+          same loading language as the numbers beside it. */}
+      {!loaded ? (
+        <Skeleton className="absolute inset-0 rounded-full" aria-hidden="true" />
+      ) : null}
+      <img
+        ref={imgRef}
+        src={PRIZE_POOL_IMAGE}
+        alt=""
+        aria-hidden="true"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        className={`pool-coin-float shrink-0 object-contain transition-opacity duration-300 motion-reduce:transition-none ${
+          loaded ? "opacity-85" : "opacity-0"
+        } ${className}`}
+      />
+    </>
   );
 }
 
@@ -314,7 +343,7 @@ export default function Home() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch("/api/rounds", { cache: "no-store" }).then((x) => x.json());
+        const r = await fetch("/api/rounds?status=completed&limit=5", { cache: "no-store" }).then((x) => x.json());
         if (cancelled) return;
         setRounds(r as RoundsResp);
       } catch {
@@ -388,9 +417,10 @@ export default function Home() {
   const totalHolders = status?.totalHolders ?? 0;
   // Share of all holders that clear the threshold — drives the eligible card bar.
   const eligibleShare = totalHolders > 0 ? Math.min(100, (eligibleHolders / totalHolders) * 100) : 0;
-  // Every settled round in the 50-round window is handed to RecentDraws, which
-  // pages them 5 at a time in place — so the homepage covers the recent history
-  // without bouncing to /draws, while "/draws" stays the full archive.
+  // The five newest *completed* draws, fetched directly from the API
+  // (`status=completed&limit=5`) instead of filtering a window: with a busy
+  // skip history, "5 from the last 50" could return one or none. "/draws" stays
+  // the full, server-paginated archive.
   const completedRounds = (rounds?.rounds ?? []).filter(
     (r) => r.status === "completed"
   );
@@ -430,14 +460,6 @@ export default function Home() {
   const extraShare = (prize?.payoutDistribution ?? [])
     .slice(3)
     .reduce((sum, share) => sum + share, 0);
-  // Mirrors the engine skip rule, surfaced honestly instead of "pool > 0".
-  const prizeState = loading
-    ? "Loading"
-    : prize?.playable
-      ? "Ready"
-      : prizePoolSol > 0
-        ? "Below minimum prize"
-        : "Awaiting funds";
   // Live-draw banner: a round is mid-execution, or we count down to the next one.
   const drawing = lastRound?.status === "drawing";
   const nextDraw = useMemo(
@@ -754,39 +776,23 @@ export default function Home() {
             {/* Prize pool — the wide tile */}
             <div className="relative overflow-hidden rounded-lg border border-(--border) bg-surface p-4 sm:col-span-2 sm:p-6 lg:col-span-1">
               <div className="pool-sheen pointer-events-none absolute inset-0" aria-hidden="true" />
-              <div className="relative flex items-start justify-between gap-4">
+              <div className="relative flex items-center justify-between gap-4 sm:items-start">
                 <div className="flex min-w-0 flex-col gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm text-muted">Prize pool</span>
-                    {loading ? (
-                      /* Same footprint as the `sm` chip, so the number below
-                         doesn't jump when the first /api/status response lands. */
-                      <Skeleton className="h-[22px] w-24 rounded-full" />
-                    ) : (
-                      <span
-                        title={
-                          prize && prizePoolSol > 0 && !prize.playable
-                            ? `Below the ${fmtSolHuman(prize.minPrizeSol)} minimum — the round is skipped until the pool grows.`
-                            : undefined
-                        }
-                      >
-                        <Chip
-                          size="sm"
-                          variant="soft"
-                          color={
-                            prize?.playable
-                              ? "success"
-                              : prizePoolSol > 0
-                                ? "warning"
-                                : "default"
-                          }
-                        >
-                          {prizeState}
-                        </Chip>
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-baseline gap-2">
+                  {/* Status chip removed on request ("Ready / Below minimum
+                      prize / Awaiting funds"): it restated what the number and
+                      the countdown already implied and was the loudest element
+                      in the tile. The one fact worth keeping — this round gets
+                      skipped until the pool clears the minimum — rides as a
+                      tooltip on the amount instead. */}
+                  <span className="text-sm text-muted">Prize pool</span>
+                  <div
+                    className="flex items-baseline gap-2"
+                    title={
+                      prize && prizePoolSol > 0 && !prize.playable
+                        ? `Below the ${fmtSolHuman(prize.minPrizeSol)} minimum — the round is skipped until the pool grows.`
+                        : undefined
+                    }
+                  >
                     {loading ? (
                       <>
                         <Skeleton className="h-10 w-40 sm:h-12 sm:w-52" />
@@ -807,7 +813,17 @@ export default function Home() {
                     Funded by creator fees and paid in SOL to {winnerCount} holders drawn at random.
                   </p>
                 </div>
-                <PrizePoolArt className="hidden h-24 w-24 shrink-0 sm:block" />
+                {/* Phones: centred against the copy and inset from the card edge.
+                    The halo + lowered opacity + soft drop shadow make the upload
+                    sit *in* the card instead of looking pasted on top of it
+                    (both survive the SVG fallback too). */}
+                <span className="relative mr-2 flex h-14 w-14 shrink-0 items-center justify-center sm:mr-0 sm:h-24 sm:w-24">
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -inset-3 rounded-full bg-accent/20 blur-xl"
+                  />
+                  <PrizePoolArt className="relative h-full w-full drop-shadow-[0_4px_12px_rgba(0,0,0,0.22)]" />
+                </span>
               </div>
               {/* Two live facts that were nowhere else in the fold: the
                   eligibility threshold (before this it only existed in a
@@ -973,7 +989,7 @@ export default function Home() {
                             in RecentDraws. The gradient makes it read as a coin
                             rather than a label. */}
                         <span
-                          className={`relative z-10 grid size-7 shrink-0 place-items-center rounded-full text-[9px] tracking-tight ring-2 ring-surface ${rankMedal(row.rank)}`}
+                          className={`relative z-10 grid size-7 shrink-0 place-items-center rounded-full text-[10px] font-medium tracking-tight tabular-nums ring-2 ring-surface ${rankMedal(row.rank)}`}
                           aria-hidden="true"
                         >
                           {ordinal(row.rank)}
@@ -1068,9 +1084,22 @@ export default function Home() {
                      first paint (it used to flash "Scheduled" while /api/status
                      was still in flight). */
                   <Skeleton className="h-[22px] w-20 rounded-full" />
+                ) : drawing ? (
+                  /* A live draw is the one moment this tile should raise its
+                     voice, so the running state keeps the warning tint. */
+                  <Chip size="sm" variant="soft" color="warning">
+                    In progress
+                  </Chip>
                 ) : (
-                  <Chip size="sm" variant="soft" color={drawing ? "warning" : "accent"}>
-                    {drawing ? "In progress" : cadenceChip}
+                  /* Idle: same quiet outline chip as the prize-split figure —
+                     the cadence is reference data, not a call to action. */
+                  <Chip
+                    size="sm"
+                    variant="tertiary"
+                    color="default"
+                    className="border border-(--border) text-muted! tabular-nums"
+                  >
+                    {cadenceChip}
                   </Chip>
                 )}
               </div>

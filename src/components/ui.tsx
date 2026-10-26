@@ -4,7 +4,7 @@ import { type ReactNode, useEffect } from "react";
 import { Button, Skeleton as HeroSkeleton } from "@heroui/react";
 import { animate, motion, useMotionValue, useTransform } from "framer-motion";
 import { useTheme } from "@/lib/use-theme";
-import { ChartLine, CircleCheckBig, CircleQuestionMark, CreditCardCheck, Dices, FaceSlightlyFrowning, FaceSlightlySmiling, House, Landmark, Radio, Send, ShieldCheck, UserCheck, UsersRound } from "lucide-react";
+import { ChartLine, CircleCheckBig, CircleQuestionMark, CreditCardCheck, Dices, FaceSlightlyFrowning, FaceSlightlySmiling, House, Radio, Send, ShieldCheck, UserCheck, UsersRound, WalletMinimal } from "lucide-react";
 
 /**
  * Skeleton placeholders built on HeroUI's Skeleton so the loading animation
@@ -113,9 +113,10 @@ export function Icon({ name, className }: { name: string; className?: string }) 
   if (name === "chart-line") {
     return <ChartLine className={className} size={18} strokeWidth={1.8} aria-hidden="true" />;
   }
-  if (name === "landmark") {
-    // Classical bank front — the treasury/money side of the app.
-    return <Landmark className={className} size={18} strokeWidth={1.8} aria-hidden="true" />;
+  if (name === "wallet-minimal") {
+    // Treasury is a wallet, not a bank building. Lucide's minimal outline reads
+    // at 18 px next to the other route glyphs.
+    return <WalletMinimal className={className} size={18} strokeWidth={1.8} aria-hidden="true" />;
   }
   if (name === "circle-question-mark") {
     // "How it works" reads as a help entry, so it gets a question mark rather
