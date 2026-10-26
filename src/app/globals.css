@@ -68,7 +68,10 @@
 
   /* Border Radius */
   --radius: 0.5rem;
-  --field-radius: 0.75rem;
+  /* Fields (inputs, selects, textareas) follow the surface radius instead of
+     HeroUI's 1.5× default: a 12 px select next to an 8 px card read as two
+     different design languages. `.rounded-field` resolves this variable. */
+  --field-radius: var(--radius);
 }
 
 .dark,
@@ -249,6 +252,14 @@ section[id] {
 
 .pool-coin-float {
   animation: pool-coin-float 6s ease-in-out infinite;
+}
+
+/* HeroUI's select dropdown ships `border-radius: min(32px, var(--radius-3xl))`
+   (~24 px). The field that opens it is now --radius (8 px), so the panel follows
+   the same corner scale as every card on the site instead of looking like a
+   pill floating above a rounded rectangle. */
+.select__popover {
+  border-radius: var(--radius);
 }
 
 /* Podium bars in the prize-split tile — a thin light sweep that travels along

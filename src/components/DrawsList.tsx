@@ -3,9 +3,9 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CircleCheck, CircleX, Clock, Minus } from "lucide-react";
-import { Button, Chip } from "@heroui/react";
+import { Button, Chip, Tabs } from "@heroui/react";
 import { DrandBeacon } from "@/components/DrandBeacon";
-import { CountUp, Icon, Skeleton, SkeletonRows } from "@/components/ui";
+import { CountUp, Icon, Skeleton } from "@/components/ui";
 import { fmtDateTimeUtc, fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
 
 type Winner = {
@@ -52,6 +52,8 @@ type RoundsResponse = {
     paidSol: number;
   };
   latest: { roundNumber: number; status: string; at: string | null } | null;
+  /** Median gap between consecutive settled rounds (ms) — the real cadence. */
+  cadenceMs: number | null;
   limit: number;
   offset: number;
   hasMore: boolean;
@@ -61,6 +63,15 @@ type RoundsResponse = {
 /** Rows per page. Server-paginated, so this is a page size, not a window cap. */
 const PAGE_SIZE = 10;
 
+/** Status tabs above the list — the API filters server-side (`?status=`). */
+type StatusFilter = "all" | "completed" | "skipped" | "failed";
+const FILTERS: { key: StatusFilter; label: string; empty: string }[] = [
+  { key: "all", label: "All", empty: "No draws yet. The first one appears here as soon as it finishes." },
+  { key: "completed", label: "Completed", empty: "No completed draws yet — rounds that pay out will show up here." },
+  { key: "skipped", label: "Skipped", empty: "Nothing skipped so far: every round reached the minimum and ran." },
+  { key: "failed", label: "Failed", empty: "No failed draws — nothing broke on the payout side." },
+];
+
 const shortAddr = (a: string, h = 4, t = 4): string =>
   !a || a.length <= h + t ? a : `${a.slice(0, h)}…${a.slice(-t)}`;
 const explorer = (v: string, kind: "address" | "tx", net: string): string =>
@@ -68,6 +79,20 @@ const explorer = (v: string, kind: "address" | "tx", net: string): string =>
     net === "devnet" ? "?cluster=devnet" : ""
   }`;
 const fmtTime = (iso: string | null): string => fmtDateTimeUtc(iso);
+
+/** Concise human duration from milliseconds, e.g. 600000 → "10 min". Rounded to
+ *  the nearest minute so a 59:59 gap reads "1h" instead of "59 min". */
+function fmtDuration(ms: number | null): string {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return "—";
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  if (hr < 24) return remMin ? `${hr}h ${remMin}m` : `${hr}h`;
+  return `${Math.floor(hr / 24)}d`;
+}
 
 /** Tailwind classes for a circular rank badge, tiered like a podium.
  *  Subtle tints (gold / silver / bronze) instead of saturated gradients so
@@ -170,37 +195,41 @@ export default function DrawsList({
   className?: string;
 }) {
   const [data, setData] = useState<RoundsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  /** Background work (filter change, page change, 15 s refresh). It never
+   *  unmounts the list — that was the jump: skeletons replaced the card, the
+   *  page lost ~900 px of height and the scroll position snapped. */
+  const [busy, setBusy] = useState(false);
+  /** Only the very first paint is a skeleton state. */
+  const loading = !data && !err;
   /** Zero-based page. The API does the slicing, so the browser never holds more
    *  than one page of rounds (each with winners). */
   const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState<StatusFilter>("all");
 
   const fetchRounds = useCallback(
     async (silent = false) => {
       if (!silent) {
-        setLoading(true);
+        setBusy(true);
         setErr(null);
       }
       try {
+        const status = filter === "all" ? "" : `&status=${filter}`;
         const r = await fetch(
-          `/api/rounds?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`,
+          `/api/rounds?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}${status}`,
           { cache: "no-store" }
         );
         setData((await r.json()) as RoundsResponse);
         setErr(null);
       } catch (e) {
-        // A failed background refresh keeps the last good snapshot on screen;
-        // only a first load owns the error state.
-        if (!silent) {
-          setErr((e as Error).message);
-          setData(null);
-        }
+        // Keep the last good page on screen: an error banner above stale rows is
+        // far less disruptive than a full-page error in the middle of a filter.
+        if (!silent) setErr((e as Error).message);
       } finally {
-        if (!silent) setLoading(false);
+        if (!silent) setBusy(false);
       }
     },
-    [page]
+    [page, filter]
   );
 
   /* First load, then a quiet 15 s refresh — the same window the API caches, so a
@@ -231,12 +260,32 @@ export default function DrawsList({
   const lastShown = page * PAGE_SIZE + rounds.length;
   const listTop = useRef<HTMLDivElement>(null);
 
-  /** Pager handler: new page, then bring the list back into view (the controls
-   *  sit under it, so without this the new rows load off-screen above). */
+  /** Pager handler: new page, then nudge the list into view only if it scrolled
+   *  away (`nearest`), so the page never jumps just because rows changed. */
   const goToPage = (next: number) => {
     setPage(Math.max(0, Math.min(pageCount - 1, next)));
-    listTop.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    listTop.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   };
+
+  /** Filter switch: back to page 1. No scrolling — the tab you clicked stays
+   *  exactly where it is; the list below swaps in place once the page arrives. */
+  const changeFilter = (next: StatusFilter) => {
+    if (next === filter) return;
+    setFilter(next);
+    setPage(0);
+  };
+
+  const activeFilter = FILTERS.find((f) => f.key === filter) ?? FILTERS[0];
+  const countFor = (key: StatusFilter) =>
+    !totals
+      ? 0
+      : key === "all"
+        ? totals.all
+        : key === "completed"
+          ? totals.completed
+          : key === "skipped"
+            ? totals.skipped
+            : totals.failed;
 
   // Every figure in the summary is all-time, straight from the API's totals —
   // nothing is derived from the 10 rows on screen any more.
@@ -244,11 +293,11 @@ export default function DrawsList({
     totals && totals.all > 0 ? Math.round((n / totals.all) * 100) : 0;
 
   return (
-    <div className={className} ref={listTop}>
+    <div className={className} ref={listTop} aria-busy={busy}>
       {/* Summary stats card — all-time, from the API's totals */}
-      {data && !loading && (
+      {data && (
         <div className="mb-6 overflow-hidden rounded-lg border border-(--border)">
-          <div className="grid grid-cols-2 gap-px bg-(--border) sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-px bg-(--border) sm:grid-cols-5">
             <Stat
               label="Draws"
               value={<CountUp value={totals?.all ?? 0} />}
@@ -271,6 +320,11 @@ export default function DrawsList({
               caption="SOL to winners"
             />
             <Stat
+              label="Draw interval"
+              value={fmtDuration(data?.cadenceMs ?? null)}
+              caption="median of the last 60 rounds"
+            />
+            <Stat
               label="Latest draw"
               value={timeAgo(latest?.at ?? null)}
               caption={
@@ -278,28 +332,73 @@ export default function DrawsList({
                   ? `draw #${latest.roundNumber} · ${statusLabel(latest.status)}`
                   : "no draws yet"
               }
+              className="col-span-2 sm:col-span-1"
             />
           </div>
           <div className="border-t border-(--border) px-4 py-2 sm:px-5">
             <p className="text-xs text-muted">
-              Every settled draw, newest first — skipped and failed rounds included.
+              Every settled draw, newest first. Skipped and failed rounds included.
             </p>
           </div>
         </div>
       )}
 
+      {/* Status tabs (HeroUI Tabs, same primitives as /admin). The filter runs
+          on the server, so switching is one small request, not a re-filter of
+          the page in the browser. Counts come from the all-time totals, so they
+          stay right on every page. */}
+      {data && (
+        <Tabs
+          selectedKey={filter}
+          onSelectionChange={(key) => changeFilter(String(key) as StatusFilter)}
+          className="mb-4"
+        >
+          <Tabs.ListContainer>
+            <Tabs.List aria-label="Filter draws by status">
+              {FILTERS.map((f) => (
+                <Tabs.Tab key={f.key} id={f.key}>
+                  {f.label}
+                  <span className="ml-1 tabular-nums text-xs opacity-70">
+                    {countFor(f.key)}
+                  </span>
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
+          </Tabs.ListContainer>
+        </Tabs>
+      )}
+
       {loading && (
         <>
-          {/* Skeleton summary card mirroring the real stats layout */}
+          {/* Skeleton mirrors the real layout 1:1 — summary card with its footer
+              strip, the status tabs, then two draw cards (header · 4 stats ·
+              winner rows · beacon block). The old version stopped at the tiles
+              plus three thin table rows, so the page grew by ~400 px the moment
+              data landed. */}
           <div className="mb-6 overflow-hidden rounded-lg border border-(--border)">
-            <div className="grid grid-cols-2 gap-px bg-(--border) sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-px bg-(--border) sm:grid-cols-5">
               <StatSkeleton label="Draws" />
               <StatSkeleton label="Skipped" />
               <StatSkeleton label="Paid out" />
-              <StatSkeleton label="Latest draw" />
+              <StatSkeleton label="Draw interval" />
+              <StatSkeleton label="Latest draw" className="col-span-2 sm:col-span-1" />
+            </div>
+            <div className="border-t border-(--border) px-4 py-2 sm:px-5">
+              <Skeleton className="h-3 w-72 max-w-full" />
             </div>
           </div>
-          <SkeletonRows count={3} />
+
+          {/* Status tabs strip */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Skeleton className="h-9 w-20 rounded-md" />
+            <Skeleton className="h-9 w-28 rounded-md" />
+            <Skeleton className="h-9 w-24 rounded-md" />
+            <Skeleton className="h-9 w-24 rounded-md" />
+          </div>
+
+          <DrawCardSkeleton />
+          <DrawCardSkeleton />
         </>
       )}
 
@@ -308,6 +407,15 @@ export default function DrawsList({
           <p className="text-danger text-sm">
             Couldn’t load the draw history. Check your connection and try again.
           </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onPress={() => fetchRounds()}
+            isPending={busy}
+          >
+            Try again
+          </Button>
         </div>
       )}
       {data?.dbError && (
@@ -316,18 +424,18 @@ export default function DrawsList({
         </p>
       )}
 
-      {!loading && data && data.rounds.length === 0 && (
+      {data && data.rounds.length === 0 && (
         <div className="py-20 text-center">
-          <p className="text-muted">
-            No draws yet. The first one appears here as soon as it finishes.
-          </p>
+          <p className="text-muted">{activeFilter.empty}</p>
         </div>
       )}
 
       {rounds.map((r) => (
         <div
           key={r.roundNumber}
-          className="rounded-lg border border-(--border) bg-surface px-5 py-4 mb-4"
+          className={`rounded-lg border border-(--border) bg-surface px-5 py-4 mb-4 transition-opacity duration-150 ${
+            busy ? "opacity-60" : ""
+          }`}
         >
           {/* Round header */}
           <div className="flex flex-wrap items-center gap-3 -mx-5 px-5 pb-3 mb-3 border-b border-(--border)">
@@ -475,17 +583,19 @@ export default function DrawsList({
         </div>
       ))}
 
-      {data && !loading && data.total > 0 && (
+      {data && data.total > 0 && (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-(--border) pt-4 pb-2">
           <p className="text-xs text-muted tabular-nums">
-            Showing {firstShown}–{lastShown} of {data.total} settled draws
+            Showing {firstShown}–{lastShown} of {data.total}{" "}
+            {filter === "all" ? "settled" : activeFilter.label.toLowerCase()} draw
+            {data.total === 1 ? "" : "s"}
           </p>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onPress={() => goToPage(page - 1)}
-              isDisabled={page === 0}
+              isDisabled={page === 0 || busy}
             >
               <Icon name="arrow-left" className="h-3 w-3" />
               Prev
@@ -497,7 +607,7 @@ export default function DrawsList({
               variant="outline"
               size="sm"
               onPress={() => goToPage(page + 1)}
-              isDisabled={page >= pageCount - 1}
+              isDisabled={page >= pageCount - 1 || busy}
             >
               Next
               <Icon name="arrow-left" className="h-3 w-3 rotate-180" />
@@ -510,9 +620,19 @@ export default function DrawsList({
   );
 }
 
-function Stat({ label, value, caption }: { label: string; value: ReactNode; caption: string }) {
+function Stat({
+  label,
+  value,
+  caption,
+  className = "",
+}: {
+  label: string;
+  value: ReactNode;
+  caption: string;
+  className?: string;
+}) {
   return (
-    <div className="bg-surface px-4 sm:px-5 py-3 flex flex-col">
+    <div className={`bg-surface px-4 sm:px-5 py-3 flex flex-col ${className}`}>
       <span className="text-sm text-muted">{label}</span>
       <span className="mt-1 text-xl sm:text-2xl font-semibold tabular-nums leading-tight break-words text-foreground">
         {value}
@@ -522,12 +642,49 @@ function Stat({ label, value, caption }: { label: string; value: ReactNode; capt
   );
 }
 
-function StatSkeleton({ label }: { label: string }) {
+function StatSkeleton({ label, className = "" }: { label: string; className?: string }) {
   return (
-    <div className="bg-surface px-4 sm:px-5 py-3 flex flex-col">
+    <div className={`bg-surface px-4 sm:px-5 py-3 flex flex-col ${className}`}>
       <span className="text-sm text-muted">{label}</span>
       <Skeleton className="mt-1 h-6 w-24" />
       <Skeleton className="mt-1 h-3 w-16" />
+    </div>
+  );
+}
+
+/**
+ * One draw card while the first page loads. Same paddings, rules and block
+ * heights as the real card so the swap underneath is a fade, not a jump:
+ * header row → 4 stat cells → three winner rows → beacon panel.
+ */
+function DrawCardSkeleton() {
+  return (
+    <div className="rounded-lg border border-(--border) bg-surface px-5 py-4 mb-4">
+      <div className="flex flex-wrap items-center gap-3 -mx-5 px-5 pb-3 mb-3 border-b border-(--border)">
+        <Skeleton className="h-5 w-28" />
+        <Skeleton className="ml-auto h-5 w-20 rounded-full" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3 mb-5 sm:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex flex-col gap-1">
+            <Skeleton className="h-[18px] w-20" />
+            <Skeleton className="h-[18px] w-24" />
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Skeleton className="size-6 shrink-0 rounded-full" />
+            <Skeleton className="h-3 flex-1" />
+            <Skeleton className="h-3 w-16 shrink-0" />
+          </div>
+        ))}
+      </div>
+
+      <Skeleton className="mt-4 h-14 w-full rounded-lg" />
     </div>
   );
 }

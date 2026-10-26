@@ -24,6 +24,23 @@ type StatusFilter = "all" | (typeof SETTLED)[number];
 
 const MAX_LIMIT = 100;
 
+/** Median gap between consecutive settled rounds — this is the real cadence. */
+function medianGapMs(times: Date[]): number | null {
+  if (times.length < 2) return null;
+  const ts = times.map((t) => t.getTime()).sort((a, b) => a - b);
+  const diffs: number[] = [];
+  for (let i = 1; i < ts.length; i++) {
+    const gap = ts[i] - ts[i - 1];
+    if (gap > 0) diffs.push(gap);
+  }
+  if (diffs.length === 0) return null;
+  diffs.sort((a, b) => a - b);
+  const mid = Math.floor(diffs.length / 2);
+  return diffs.length % 2
+    ? diffs[mid]
+    : Math.round((diffs[mid - 1] + diffs[mid]) / 2);
+}
+
 /**
  * Paginated on the server (2026-10-26): `/draws` used to show only the newest 50
  * rows (`take: 50`), so older draws were unreachable and every header figure was
@@ -51,11 +68,12 @@ async function buildRounds({
   let rounds: unknown[] = [];
   let total = 0;
   let totals = { all: 0, completed: 0, failed: 0, skipped: 0, paidSol: 0 };
+  let cadenceMs: number | null = null;
   let latest: { roundNumber: number; status: string; at: string | null } | null =
     null;
   let dbError: string | null = null;
   try {
-    const [rows, count, byStatus, newest, paid] = await Promise.all([
+    const [rows, count, byStatus, newest, paid, recentTimes] = await Promise.all([
       prisma.lotteryRound.findMany({
         where,
         orderBy: { roundNumber: "desc" },
@@ -84,6 +102,14 @@ async function buildRounds({
         where: { status: "sent", round: { status: "completed" } },
         _sum: { amountLamports: true },
       }),
+      // Cadence sample: timestamps only, last 60 settled rounds (skips included,
+      // because a skipped tick still proves the cron fired).
+      prisma.lotteryRound.findMany({
+        where: { status: { in: [...SETTLED] } },
+        orderBy: { roundNumber: "desc" },
+        take: 60,
+        select: { startedAt: true },
+      }),
     ]);
     const n = (s: string) => byStatus.find((g) => g.status === s)?._count._all ?? 0;
     total = count;
@@ -101,6 +127,7 @@ async function buildRounds({
         at: (newest.completedAt ?? newest.startedAt).toISOString(),
       };
     }
+    cadenceMs = medianGapMs(recentTimes.map((r) => r.startedAt));
 
     rounds = rows.map((r) => ({
       roundNumber: r.roundNumber,
@@ -147,6 +174,7 @@ async function buildRounds({
     total,
     totals,
     latest,
+    cadenceMs,
     limit,
     offset,
     hasMore: offset + rounds.length < total,
