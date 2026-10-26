@@ -204,6 +204,30 @@ const ordinal = (n: number): string => {
  * sparkles, drawn inline so it needs no asset request and tints itself from
  * the accent token (`currentColor`), which keeps light and dark in sync.
  */
+/** Drop the PNG at `public/prizepool_image.png` — no import, no build step. */
+const PRIZE_POOL_IMAGE = "/prizepool_image.png";
+
+/**
+ * Prize-pool art: the uploaded `prizepool_image.png` when it exists, otherwise
+ * the built-in coin SVG. Same fallback trick as `BrandMark` (plain <img> +
+ * onError), so a not-yet-uploaded file never shows a broken image and the tile
+ * keeps its 96 px box either way. Decorative — the tile labels itself.
+ */
+function PrizePoolArt({ className = "" }: { className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <PoolArt className={className} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={PRIZE_POOL_IMAGE}
+      alt=""
+      aria-hidden="true"
+      onError={() => setFailed(true)}
+      className={`shrink-0 object-contain ${className}`}
+    />
+  );
+}
+
 function PoolArt({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -783,7 +807,7 @@ export default function Home() {
                     Funded by creator fees and paid in SOL to {winnerCount} holders drawn at random.
                   </p>
                 </div>
-                <PoolArt className="hidden h-24 w-24 shrink-0 sm:block" />
+                <PrizePoolArt className="hidden h-24 w-24 shrink-0 sm:block" />
               </div>
               {/* Two live facts that were nowhere else in the fold: the
                   eligibility threshold (before this it only existed in a
@@ -869,9 +893,9 @@ export default function Home() {
                     >
                       <Chip
                         size="sm"
-                        variant="soft"
+                        variant="tertiary"
                         color="default"
-                        className="tabular-nums"
+                        className="border border-(--border) text-muted! tabular-nums"
                       >
                         {splitPoolSol > 0 ? `≈ ${fmtSolHuman(splitPoolSol)}` : "Estimate"}
                       </Chip>
