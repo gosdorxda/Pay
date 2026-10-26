@@ -39,21 +39,18 @@ type WalletOverview = {
   error: string | null;
 };
 
-/** Only the fields the tx tables need out of a draw row. */
-type RoundRow = {
+/** One paid-out draw, from /api/treasury/ledger (every draw, not a window). */
+type LedgerRow = {
   roundNumber: number;
-  status: string;
-  startedAt: string;
-  completedAt: string | null;
-  prizePoolSol?: number;
-  platformFeeLamports?: string | null;
-  payoutTx?: string | null;
-  winners?: { amountSol: number }[];
+  at: string;
+  payoutTx: string;
+  paidSol: number;
+  feeSol: number;
 };
 
-type RoundsResp = {
-  network: "mainnet" | "devnet";
-  rounds: RoundRow[];
+type LedgerResp = {
+  rows: LedgerRow[];
+  count: number;
   dbError: string | null;
 };
 
@@ -65,15 +62,16 @@ type TxRow = {
   amountSol: number;
 };
 
-/** Rows per page in both tx tables — the ledger keeps 50 draws, so paginate. */
+/** Rows per page in both tx tables — the ledger now holds every paid draw. */
 const PAGE_SIZE = 5;
 
 export default function TreasuryPage() {
   const [wallets, setWallets] = useState<WalletOverview | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
-  // Draw rows are only needed to reconstruct fee sweeps, so a failure here hides
-  // the derived fee rows and marks the history incomplete (never sample rows).
-  const [rounds, setRounds] = useState<RoundRow[]>([]);
+  // Paid-out draws are only needed to reconstruct the two tx tables, so a
+  // failure here hides the derived rows and marks the history incomplete
+  // (never sample rows). /api/treasury/ledger returns every draw, not 50.
+  const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [roundsError, setRoundsError] = useState<string | null>(null);
   // Buyback numbers are a hand-kept ledger in `data/buyback.json` (Admin →
   // Buyback), read through /api/buyback. A bad edit must not take the page
@@ -101,11 +99,11 @@ export default function TreasuryPage() {
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/rounds", { cache: "no-store" })
+    fetch("/api/treasury/ledger", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d: RoundsResp) => {
+      .then((d: LedgerResp) => {
         if (!alive) return;
-        setRounds(d.rounds ?? []);
+        setLedger(d.rows ?? []);
         if (d.dbError) setRoundsError(d.dbError);
       })
       .catch((e) => {
@@ -144,25 +142,17 @@ export default function TreasuryPage() {
    * wallet-history indexer is needed: `payoutTx` is the on-chain receipt.
    */
   const platformTxs = useMemo(() => {
-    const rows: TxRow[] = rounds
-      .filter((r) => r.status === "completed" && r.payoutTx)
-      .map((r) => {
-        const paid = (r.winners ?? []).reduce((sum, w) => sum + w.amountSol, 0);
-        const fee = Number(r.platformFeeLamports ?? 0) / 1_000_000_000;
-        // Winner amounts are authoritative; pool − fee is the same figure and
-        // covers rows recorded before the winner snapshots were kept.
-        const amountSol = paid > 0 ? paid : Math.max(0, (r.prizePoolSol ?? 0) - fee);
-        return {
-          signature: r.payoutTx as string,
-          at: r.completedAt ?? r.startedAt,
-          label: `Prize payouts · draw #${r.roundNumber}`,
-          amountSol: -amountSol,
-        };
-      })
-      .filter((r) => r.amountSol < 0)
+    const rows: TxRow[] = ledger
+      .filter((r) => r.paidSol > 0)
+      .map((r) => ({
+        signature: r.payoutTx,
+        at: r.at,
+        label: `Prize payouts · draw #${r.roundNumber}`,
+        amountSol: -r.paidSol,
+      }))
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     return { rows, live: rows.length > 0 };
-  }, [rounds]);
+  }, [ledger]);
 
   /**
    * Fee-wallet activity, derived from the same ledger. The engine sweeps the
@@ -176,14 +166,13 @@ export default function TreasuryPage() {
    * been recorded — never mixed in with real fee or buyback rows.
    */
   const feeTxs = useMemo(() => {
-    const paidDraws = rounds.filter((r) => r.status === "completed" && r.payoutTx);
-    const rows: TxRow[] = paidDraws
-      .filter((r) => Number(r.platformFeeLamports ?? 0) > 0)
+    const rows: TxRow[] = ledger
+      .filter((r) => r.feeSol > 0)
       .map((r) => ({
-        signature: r.payoutTx as string,
-        at: r.completedAt ?? r.startedAt,
+        signature: r.payoutTx,
+        at: r.at,
         label: `Earned from draw #${r.roundNumber}`,
-        amountSol: Number(r.platformFeeLamports) / 1_000_000_000,
+        amountSol: r.feeSol,
       }));
 
     for (const t of buyback?.txs ?? []) {
@@ -197,8 +186,8 @@ export default function TreasuryPage() {
     }
 
     rows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-    return { rows, live: rows.length > 0, draws: paidDraws.length };
-  }, [rounds, buyback]);
+    return { rows, live: rows.length > 0, draws: ledger.length };
+  }, [ledger, buyback]);
 
   /**
    * Sample fee rows only when there is genuinely nothing to show AND the draw
