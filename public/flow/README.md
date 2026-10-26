@@ -2,11 +2,11 @@
 
 `src/components/HowItWorksFlow.tsx` looks for three images here:
 
-| file              | card             |
-| ----------------- | ---------------- |
-| `pumpfun.png`     | Pump.fun trading |
-| `pay.png`         | Pay engine       |
-| `drand.png`       | drand beacon     |
+| file              | card                                        |
+| ----------------- | ------------------------------------------- |
+| `pumpfun.png`     | Pump.fun trading                            |
+| `pay.png`         | Engine card — title is the admin brand name |
+| `drand.png`       | drand beacon                                |
 
 Drop the files in with these names — no code change needed, they are served from
 `/flow/<name>.png`.

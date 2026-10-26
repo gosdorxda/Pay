@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Dices, Hash, Zap } from "lucide-react";
+import { useSite } from "@/components/providers/SiteProvider";
 
 type Winner = { rank: number; address: string };
 
@@ -480,6 +481,9 @@ export default function HowItWorksFlow({
   /** Next round's split from /api/status; absent while loading or unreadable. */
   payoutDistribution?: number[];
 }) {
+  // Card title comes from the admin brand name (SiteProvider), so the flow never
+  // shows a stale hardcoded wordmark like the old "Pay engine".
+  const { brandName } = useSite();
   const reduceMotion = useReducedMotion();
   const reduced = Boolean(reduceMotion);
   const progress = useFlowProgress(reduced);
@@ -506,7 +510,7 @@ export default function HowItWorksFlow({
       {/* ===================== Desktop ===================== */}
       <div
         className="relative hidden min-h-[390px] lg:block"
-        aria-label="Pump.fun creator fee flows through the Pay engine and drand to the winners"
+        aria-label={`Pump.fun creator fee flows through the ${brandName} engine and drand to the winners`}
       >
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full"
@@ -545,12 +549,13 @@ export default function HowItWorksFlow({
           />
         </div>
 
-        {/* Pay engine - Fisher-Yates shuffle (dots dance while the dot visits) */}
+        {/* The engine card — titled with the brand (Admin → SEO → Brand name),
+            not a hardcoded old name. */}
         <div className="absolute left-[28.2%] top-[164px] w-[16.5%]">
           <Node
             icon={<Dices size={18} />}
             image={ART.pay}
-            title="Pay engine"
+            title={`${brandName} engine`}
             active={platformActive}
             subtitle={platformActive ? <ShuffleDots active /> : "Provably-fair shuffle"}
           />
@@ -582,7 +587,7 @@ export default function HowItWorksFlow({
       {/* ===================== Mobile ===================== */}
       <div
         className="flex flex-col gap-2 lg:hidden"
-        aria-label="Pump.fun creator fee flows through the Pay engine and drand to the winners"
+        aria-label={`Pump.fun creator fee flows through the ${brandName} engine and drand to the winners`}
       >
         {/* Phones keep the flow as a centred column of capped cards, but each
             card is left-aligned exactly like the desktop tile (badge left, copy
@@ -606,7 +611,7 @@ export default function HowItWorksFlow({
           <Node
             icon={<Dices size={18} />}
             image={ART.pay}
-            title="Pay engine"
+            title={`${brandName} engine`}
             active={platformActive}
             subtitle={platformActive ? <ShuffleDots active /> : "Provably-fair shuffle"}
           />
