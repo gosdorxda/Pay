@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { TriangleAlert, X } from "lucide-react";
-import { Breadcrumbs, Chip, ProgressBar, Typography } from "@heroui/react";
+import { X } from "lucide-react";
+import { Breadcrumbs, Chip, ProgressBar, Tooltip, Typography } from "@heroui/react";
 import HowItWorksFlow from "@/components/HowItWorksFlow";
 import RecentDraws from "@/components/RecentDraws";
 import { CountUp, ExternalLink, Icon, ThemeToggle, Skeleton } from "@/components/ui";
+import { BrandMark } from "@/components/BrandMark";
 import { INFORMATION, NAV } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 import { nextCronOccurrence } from "@/lib/cron-next";
@@ -149,6 +150,55 @@ function fmtCountdown(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 }
 
+/** Podium tint as a struck-metal gradient for the prize-split medals — a flat
+ *  100-level chip reads as a label, a gradient with a darker edge reads as a
+ *  coin. Fixed light-theme values like the gold/silver/bronze chips in
+ *  `DrawsList` (gold is gold in both themes). */
+const rankMedal = (rank: number): string => {
+  switch (rank) {
+    case 1:
+      return "bg-linear-to-br from-amber-200 via-amber-300 to-amber-500 text-amber-950 shadow-sm shadow-amber-500/40";
+    case 2:
+      return "bg-linear-to-br from-slate-100 via-slate-300 to-slate-400 text-slate-800 shadow-sm shadow-slate-500/30";
+    case 3:
+      return "bg-linear-to-br from-orange-200 via-orange-300 to-orange-500 text-orange-950 shadow-sm shadow-orange-500/30";
+    default:
+      return "bg-default text-muted";
+  }
+};
+
+/** Matching fill for the split bars. Mid tones stay visible against the light
+ *  track in both themes, unlike the 100-level chip fills; the lighter end of
+ *  each gradient sits on the right so the bar looks lit from the tip. */
+const rankBar = (rank: number): string => {
+  switch (rank) {
+    case 1:
+      return "bg-linear-to-r from-amber-500 via-amber-400 to-amber-300";
+    case 2:
+      return "bg-linear-to-r from-slate-500 via-slate-400 to-slate-300";
+    case 3:
+      return "bg-linear-to-r from-orange-500 via-orange-400 to-orange-300";
+    default:
+      return "bg-accent";
+  }
+};
+
+/** 1 → "1st", 2 → "2nd", 3 → "3rd", 11 → "11th". */
+const ordinal = (n: number): string => {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+};
+
 /**
  * Decorative art for the prize-pool card — a coin with the SOL mark plus a few
  * sparkles, drawn inline so it needs no asset request and tints itself from
@@ -198,7 +248,6 @@ export default function Home() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
   const { brandName, tokenName } = useSite();
-  const brandInitial = brandName.trim().charAt(0).toUpperCase() || "P";
 
   // Mobile drawer: lock page scroll while it is open and let Escape close it,
   // so a thumb drag on the panel never scrolls the page underneath. Resizing up
@@ -327,18 +376,36 @@ export default function Home() {
   // the raw balance unless MAX_PRIZE_SOL is set, so no surprise for default setups.
   const prizePoolSol = prize?.effectivePoolSol ?? rawPoolSol;
   const minEligibleHuman = status?.minTokenEligibleHuman ?? "—";
-  // Reads as a phrase so it can drop into a sentence, and falls back to wording
-  // instead of "—" while /api/status is still in flight (SSR + first paint).
-  const minRule = status?.minTokenEligibleHuman
-    ? `at least ${minEligibleHuman} ${tokenName}`
-    : "the minimum balance";
   // Prose reads from the same value as the badge, so changing WINNER_COUNT in
   // settings can't leave the copy claiming a different number of winners.
   const winnerCount = prize?.winnerCount ?? 3;
-  // "50% / 30% / 20%" — the configured split for the next round.
-  const splitLabel = (prize?.payoutDistribution ?? [])
-    .map((p) => `${Math.round(p * 100)}%`)
-    .join(" / ");
+  // Net-of-fee pot behind the split. /api/status already deducted the platform
+  // fee from `firstPrizeSol`, so dividing by rank 1's share recovers the
+  // distributable pool without re-deriving PLATFORM_FEE_BPS in the browser.
+  const splitPoolSol =
+    prize && (prize.payoutDistribution[0] ?? 0) > 0
+      ? prize.firstPrizeSol / prize.payoutDistribution[0]
+      : 0;
+  // Why the split chip reads lower than the big pool number: the tile shows the
+  // wallet balance (gross, cap applied), the chip shows what winners actually
+  // get once PLATFORM_FEE_BPS is taken. /api/status doesn't expose the bps, so
+  // derive it from the two amounts it does send and round it for prose.
+  const feePct =
+    prizePoolSol > 0 && splitPoolSol > 0 && splitPoolSol < prizePoolSol
+      ? Math.round((1 - splitPoolSol / prizePoolSol) * 100)
+      : 0;
+  // Podium only — WINNER_COUNT is unbounded, so ranks 4+ fold into one note.
+  const splitRows = (prize?.payoutDistribution ?? [])
+    .slice(0, 3)
+    .map((share, i) => ({
+      rank: i + 1,
+      share,
+      sol: splitPoolSol * share,
+    }));
+  const extraRanks = Math.max(0, (prize?.payoutDistribution.length ?? 0) - 3);
+  const extraShare = (prize?.payoutDistribution ?? [])
+    .slice(3)
+    .reduce((sum, share) => sum + share, 0);
   // Mirrors the engine skip rule, surfaced honestly instead of "pool > 0".
   const prizeState = loading
     ? "Loading"
@@ -369,6 +436,11 @@ export default function Home() {
   // can never contradict the countdown above it (and step crons stay honest).
   const cadence = cadenceLabel(intervalMs);
   const longCadence = intervalMs >= 86_400_000;
+  // Chip label for the countdown tile: the schedule itself. "Scheduled" only
+  // restated that a draw exists, while the cadence is the one fact the tile
+  // didn't already show (it used to sit in a tooltip on the footer clock).
+  const cadenceChip =
+    cadence === "—" ? "Scheduled" : cadence.charAt(0).toUpperCase() + cadence.slice(1);
   // How often the holder snapshot itself refreshes — explains why the eligible
   // bar is a gauge (a share of holders) and not a ticking countdown.
   const holderSyncCadence = useMemo(() => {
@@ -409,7 +481,7 @@ export default function Home() {
         aria-label="Site navigation"
       >
         <div className={`flex h-14 shrink-0 items-center gap-2 border-b border-(--border) px-4 ${collapsed ? "lg:justify-center" : ""}`}>
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/15 text-sm font-bold text-accent">{brandInitial}</span>
+          <BrandMark brandName={brandName} />
           {!collapsed && (
             <span className="min-w-0 truncate font-bold tracking-tight">{brandName}</span>
           )}
@@ -451,7 +523,7 @@ export default function Home() {
               </a>
             );
           })}
-          {/* Information — external community links pinned to the bottom of the
+          {/* Social media — external community links pinned to the bottom of the
               nav (the grouping otcdesks.cash uses for Docs / Terms / X, minus
               the docs and terms pages this project doesn't have). */}
           <div
@@ -459,9 +531,9 @@ export default function Home() {
             style={{ animationDelay: `${Math.min(70 + NAV.length * 22, 190)}ms` }}
           >
             <span
-              className={`px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
+              className={`px-3 pb-1 text-xs font-normal uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
             >
-              Information
+              Social media
             </span>
             {INFORMATION.map((item) => (
               <a
@@ -539,7 +611,7 @@ export default function Home() {
                   Hold {tokenName}. <span className="text-accent">Win the pool.</span>
                 </h1>
                 <Typography type="body-sm" color="muted" className="max-w-2xl text-pretty">
-                  100% of creator fees go into the pool. Hold {minRule} and you’re in. Each
+                  100% of creator fees go into the pool. Meet the minimum hold and you’re in. Each
                   round, {winnerCount} holders are drawn at random and paid in SOL.
                 </Typography>
               </div>
@@ -600,17 +672,49 @@ export default function Home() {
                 </div>
               </dl>
 
-              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                <Link href="/draws" className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 sm:px-5">
-                  View draws
-                  <Icon name="arrow-right" className="h-4 w-4" />
+              {/* CTAs — the pair does the hero's conversion work, so they get
+                  more than a colour swap: 36 px tap targets at label size
+                  (12 px, medium — not semibold, so the pair reads as chrome
+                  next to the hero's numbers), a light sweep and a
+                  right-stepping arrow on the primary, and a filled secondary so
+                  it doesn't dissolve into the hero surface. Both ride the
+                  `translate` property (what Tailwind v4 compiles `translate-*`
+                  to), lift 1 px on hover, and have an explicit accent focus
+                  outline for keyboard users. Inline at every width — the pair
+                  sits side by side on phones too (full-width stacking made the
+                  hero read like a form), and `flex-wrap` only kicks in if the
+                  trailing drand.sh link runs out of room. */}
+              <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                <Link
+                  href="/draws"
+                  className="group relative inline-flex h-9 items-center justify-center gap-1.5 overflow-hidden rounded-lg bg-accent px-3.5 text-xs font-medium text-accent-foreground shadow-sm transition-[background-color,box-shadow,translate] duration-200 hover:-translate-y-px hover:shadow-md hover:shadow-accent/25 active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:px-4"
+                >
+                  {/* One-pass sheen — fades in from the left on hover and exits
+                      right, clipped by the button's overflow-hidden. Token-based
+                      (`--accent-foreground` is white in both themes). */}
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 -translate-x-full bg-linear-to-r from-transparent via-accent-foreground/25 to-transparent transition-[translate] duration-700 ease-out group-hover:translate-x-full motion-reduce:hidden"
+                  />
+                  <span className="relative">View draws</span>
+                  <Icon
+                    name="arrow-right"
+                    className="relative h-3 w-3 transition-[translate] duration-200 group-hover:translate-x-0.5 motion-reduce:transition-none"
+                  />
                 </Link>
-                <a href="#how" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-(--border) px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-default/40 sm:px-5">
+                <a
+                  href="#how"
+                  className="group inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-(--border) bg-default/40 px-3 text-xs font-medium text-foreground transition-[background-color,border-color,translate] duration-200 hover:-translate-y-px hover:border-accent/40 hover:bg-default/70 active:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:px-3.5"
+                >
+                  <Icon
+                    name="how"
+                    className="h-3 w-3 text-muted transition-colors group-hover:text-accent"
+                  />
                   How draws work
                 </a>
                 {/* Source of the randomness, not a third CTA: plain muted text
                     at label size, so it trails the buttons without competing. */}
-                <ExternalLink href="https://drand.sh" className="text-xs">
+                <ExternalLink href="https://drand.sh" className="self-center text-xs sm:self-auto">
                   drand.sh
                 </ExternalLink>
               </div>
@@ -620,9 +724,12 @@ export default function Home() {
 
         {/* Live strip — the three numbers that used to sit inside the hero card
             now get their own promo-style tiles (bc.game daily-contest layout):
-            prize pool (widest, with art + animated sheen), next-draw countdown,
-            and eligible holders. Kept directly under the hero so the fold still
-            answers "what can I win / when / am I in" without scrolling. */}
+            prize pool (widest, with art + animated sheen), then the prize split
+            (podium bars + eligibility footnote) in the middle, then the
+            next-draw countdown on the right. Kept directly under the hero so the
+            fold still answers "what can I win / how is it split / when" without
+            scrolling — split in the centre because the middle tile is the one
+            that gets read at a glance, countdown last before the fold edge. */}
         <section id="draw" className="pb-6">
           <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-[1.6fr_1fr_1fr]">
             {/* Prize pool — the wide tile */}
@@ -683,64 +790,270 @@ export default function Home() {
                 </div>
                 <PoolArt className="hidden h-24 w-24 shrink-0 sm:block" />
               </div>
+              {/* Two live facts that were nowhere else in the fold: the
+                  eligibility threshold (before this it only existed in a
+                  tooltip on the split tile and on /eligibility) and the age of
+                  the holder snapshot behind every eligible count on the page.
+                  They replace the old `Winners · split · 1st prize` row, which
+                  only repeated this tile's own description and the Prize split
+                  tile's rows. */}
               <div className="relative mt-5 grid grid-cols-2 gap-3 border-t border-(--border) pt-4">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted">
-                    Winners
-                  </span>
+                  <span className="text-xs text-muted">Min hold</span>
                   {loading ? (
-                    <Skeleton className="h-4 w-10" />
+                    <Skeleton className="h-4 w-14" />
                   ) : (
-                    <span className="flex flex-wrap items-baseline gap-x-1.5">
+                    <span
+                      className="flex flex-wrap items-baseline gap-x-1.5"
+                      title={
+                        status?.minTokenEligibleHuman
+                          ? `Wallets holding at least ${minEligibleHuman} ${tokenName} qualify for the draw.`
+                          : undefined
+                      }
+                    >
                       <span className="font-mono text-sm font-semibold tabular-nums">
-                        {prize ? prize.winnerCount : "—"}
+                        {minEligibleHuman}
                       </span>
-                      {splitLabel ? (
-                        <span
-                          className="text-xs text-muted"
-                          title="Share of the net pool each winner gets, by rank."
-                        >
-                          {splitLabel}
-                        </span>
-                      ) : null}
+                      <span className="text-xs text-muted">{tokenName}</span>
                     </span>
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted">
-                    1st prize ≈
-                  </span>
+                  <span className="text-xs text-muted">Updated</span>
                   {loading ? (
                     <Skeleton className="h-4 w-20" />
                   ) : (
                     <span
-                      className="font-mono text-sm font-semibold tabular-nums"
-                      title="Estimated 1st prize: the current pool minus the platform fee, split by rank."
+                      className="font-mono text-sm font-normal tabular-nums"
+                      title="Age of the holder snapshot the eligible count is computed from."
                     >
-                      {!prize || prize.firstPrizeSol <= 0 ? (
-                        "—"
-                      ) : (
-                        <CountUp
-                          value={prize.firstPrizeSol}
-                          format={(n) => fmtSolHuman(n)}
-                        />
-                      )}
+                      {status?.lastSyncAt ? timeAgo(status.lastSyncAt) : "—"}
                     </span>
                   )}
                 </div>
               </div>
             </div>
 
+            {/* Prize split — the tile answers "what does each place pay?"
+                instead of restating the holder count: one single-line row per
+                rank, with the ordinal (`1st`) inside a struck-metal medal that
+                straddles the track's left cap, and the payout + share in small
+                type over the bar's right end (rank share 50 / 30 / 20 by
+                default). Bars carry the podium gradient and the gold one gets a
+                slow light sweep (`.split-shine`), so the hierarchy is visible
+                before any number is read. Ranks 4+ collapse into a note because
+                WINNER_COUNT is unbounded. The eligibility count moved to the
+                footer so "am I in" still lands without a scroll. */}
+            <div className="relative flex flex-col overflow-hidden rounded-lg border border-(--border) bg-surface p-4 sm:p-6">
+              {/* Quiet echo of the pool tile's sheen, so the two cards in the
+                  strip read as one family — dimmer, because this tile's job is
+                  the gold/silver/bronze bars, not the amount. Drawn first and
+                  every sibling is `relative`, so it never sits over the text. */}
+              <div
+                className="pointer-events-none absolute inset-0 opacity-50"
+                aria-hidden="true"
+              >
+                {/* Wrapper carries the dimming: `.pool-sheen` animates its own
+                    opacity (0.65 → 0.95), so `opacity-50` on it would be
+                    overridden by the keyframes. */}
+                <div className="pool-sheen h-full w-full" />
+              </div>
+              <div className="relative flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm text-muted">Prize split</span>
+                {loading ? (
+                  <Skeleton className="h-[22px] w-20 rounded-full" />
+                ) : (
+                  <Tooltip delay={150}>
+                    {/* The chip is only a hover surface — it has no action, so it
+                        stays out of the tab order; the same numbers are in the
+                        rows below for anyone using the keyboard. */}
+                    <Tooltip.Trigger
+                      role="presentation"
+                      tabIndex={-1}
+                      className="flex shrink-0 cursor-default"
+                    >
+                      <Chip
+                        size="sm"
+                        variant="soft"
+                        color="default"
+                        className="tabular-nums"
+                      >
+                        {splitPoolSol > 0 ? `≈ ${fmtSolHuman(splitPoolSol)}` : "Estimate"}
+                      </Chip>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content className="max-w-[16rem] text-xs leading-snug">
+                      {splitPoolSol > 0
+                        ? `The pool tile shows the full ${fmtSolHuman(prizePoolSol)} SOL balance; ${feePct > 0 ? `the ${feePct}% platform fee is taken first` : "the platform fee is taken first"}, so ≈ ${fmtSolHuman(splitPoolSol)} SOL is what the winners actually split.`
+                        : "The pool tile shows the full wallet balance. The platform fee is taken first, then the rest is split by rank."}
+                    </Tooltip.Content>
+                  </Tooltip>
+                )}
+              </div>
+              <div className="relative mt-3.5 flex flex-col gap-2">
+                {loading ? (
+                  <>
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex h-10 items-center gap-2">
+                        <Skeleton className="size-7 shrink-0 rounded-full" />
+                        <Skeleton className="h-3 flex-1 rounded-full" />
+                        <Skeleton className="h-2 w-8 rounded" />
+                      </div>
+                    ))}
+                  </>
+                ) : splitRows.length === 0 ? (
+                  <p className="text-xs text-muted">
+                    Prize split unavailable right now.
+                  </p>
+                ) : (
+                  splitRows.map((row) => {
+                    const pct = Math.round(row.share * 100);
+                    return (
+                      <ProgressBar
+                        key={row.rank}
+                        value={pct}
+                        size="lg"
+                        aria-label={`${ordinal(row.rank)} prize share`}
+                        valueLabel={`${pct}% of the net pool`}
+                        className="relative flex h-10 items-center gap-2"
+                      >
+                        {/* The caption is absolutely placed over the right end
+                            of the track, at the top of the row: the row is 40px
+                            (12px label + a 2px breath + the 12px track centred
+                            on the 28px medal), so the payout and the share read
+                            at the same `text-xs` size as the eligibility
+                            footnote below without adding a line — and in the
+                            body font, not mono, so the caption matches the tile
+                            instead of looking like a terminal. */}
+                        <span
+                          className="absolute right-0 top-0 flex items-baseline gap-1.5 leading-none"
+                          title={
+                            splitPoolSol > 0
+                              ? `${pct}% of the net pool · ≈ ${fmtSolHuman(row.sol)} if the draw ran now`
+                              : "The pool is empty — only the share is known."
+                          }
+                        >
+                          {splitPoolSol > 0 ? (
+                            <span className="text-xs font-medium leading-none tabular-nums">
+                              {fmtSolHuman(row.sol)}
+                            </span>
+                          ) : null}
+                          <span
+                            className={
+                              splitPoolSol > 0
+                                ? "text-xs leading-none tabular-nums text-muted"
+                                : "text-xs font-medium leading-none tabular-nums"
+                            }
+                          >
+                            {pct}%
+                          </span>
+                        </span>
+                        {/* Ordinal lives inside the podium medal and the track
+                            is pulled left by half the medal's width, so the
+                            medal caps the bar instead of sitting beside it —
+                            the same "attached avatar" trick as the winner stack
+                            in RecentDraws. The gradient makes it read as a coin
+                            rather than a label. */}
+                        <span
+                          className={`relative z-10 grid size-7 shrink-0 place-items-center rounded-full text-[9px] tracking-tight ring-2 ring-surface ${rankMedal(row.rank)}`}
+                          aria-hidden="true"
+                        >
+                          {ordinal(row.rank)}
+                        </span>
+                        <ProgressBar.Track className="-ml-3.5 flex-1 overflow-hidden rounded-full bg-default/50 shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]">
+                          <ProgressBar.Fill
+                            className={`overflow-hidden rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none ${rankBar(row.rank)}${
+                              row.rank === 1 ? " split-shine" : ""
+                            }`}
+                          />
+                        </ProgressBar.Track>
+                      </ProgressBar>
+                    );
+                  })
+                )}
+              </div>
+              {!loading && extraRanks > 0 ? (
+                <p className="relative mt-2 text-[11px] text-muted">
+                  +{extraRanks} more winner{extraRanks === 1 ? "" : "s"} share{" "}
+                  {Math.round(extraShare * 100)}% of the pool
+                </p>
+              ) : null}
+              {/* Eligibility shrank to a footnote instead of a headline: the
+                  count still answers "am I in", while the tooltip keeps the
+                  minimum, the tracked total and the snapshot age that used to
+                  live in this tile. */}
+              <div className="relative mt-auto flex items-center justify-between gap-2 pt-4 text-xs text-muted">
+                {loading ? (
+                  <Skeleton className="h-3 w-20" />
+                ) : (
+                  /* Native `title` → HeroUI tooltip, so the tile's two
+                     footnotes match the chip and cadence notes: the facts
+                     (minimum, tracked total, snapshot age) live in a styled
+                     bubble instead of a browser one. The trigger is a
+                     non-focusable `flex min-w-0` wrapper so it doesn't grow
+                     the footer's line-box or the tile. */
+                  <Tooltip delay={150}>
+                    <Tooltip.Trigger
+                      role="presentation"
+                      tabIndex={-1}
+                      className="flex min-w-0 cursor-default"
+                    >
+                      <span className="truncate tabular-nums">
+                        {totalHolders === 0
+                          ? "No holders tracked"
+                          : `${eligibleHolders.toLocaleString()} eligible`}
+                      </span>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content className="max-w-[16rem] text-xs leading-snug">
+                      {[
+                        status?.minTokenEligibleHuman
+                          ? `Minimum ${minEligibleHuman} ${tokenName} to qualify`
+                          : null,
+                        totalHolders > 0
+                          ? `${Math.round(eligibleShare)}% of ${totalHolders.toLocaleString()} tracked holders qualify`
+                          : null,
+                        status?.lastSyncAt
+                          ? `Snapshot taken ${timeAgo(status.lastSyncAt)}`
+                          : null,
+                        holderSyncCadence !== "—"
+                          ? `refreshed ${holderSyncCadence}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "No holder snapshot yet."}
+                    </Tooltip.Content>
+                  </Tooltip>
+                )}
+                <Link
+                  href="/eligibility"
+                  aria-label="View all wallets"
+                  className="-my-1 inline-flex shrink-0 items-center gap-1 py-1 underline transition-colors hover:text-foreground"
+                >
+                  View all
+                  <Icon name="arrow-right" className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+
             {/* Next draw — countdown + interval progress (flex column so the
-                progress footer lines up across all three tiles) */}
+                footer lines up across all three tiles). Sits right of the split
+                now: the strip reads pool → split → when, and the eye lands on
+                the countdown last, next to the fold. */}
             <div className="relative flex flex-col overflow-hidden rounded-lg border border-(--border) bg-surface p-4 sm:p-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted">
                   Next draw
                 </span>
-                <Chip size="sm" variant="soft" color={drawing ? "warning" : "accent"}>
-                  {drawing ? "In progress" : "Scheduled"}
-                </Chip>
+                {loading ? (
+                  /* Same footprint as the `sm` chip (22 px tall), so the
+                     cadence label doesn't pop in from a placeholder word on the
+                     first paint (it used to flash "Scheduled" while /api/status
+                     was still in flight). */
+                  <Skeleton className="h-[22px] w-20 rounded-full" />
+                ) : (
+                  <Chip size="sm" variant="soft" color={drawing ? "warning" : "accent"}>
+                    {drawing ? "In progress" : cadenceChip}
+                  </Chip>
+                )}
               </div>
               <div className="mt-4 flex flex-col gap-1">
                 {loading ? (
@@ -785,17 +1098,27 @@ export default function Home() {
                   {loading ? (
                     <Skeleton className="h-3 w-24" />
                   ) : (
-                    /* Short by design — the cadence lives in the tooltip so
-                       the footer reads like the countdown above it. */
-                    <span
-                      className="truncate"
-                      title={`Draws ${cadence} · next ${nextRunClock(nextDraw, longCadence)} (cron is interpreted as UTC)`}
-                    >
-                      Next{" "}
-                      <span className="font-mono tabular-nums">
-                        {nextRunClock(nextDraw, longCadence)}
-                      </span>
-                    </span>
+                    /* Short by design — the cadence lives in a real HeroUI
+                       tooltip (the same pattern as the split chip) instead of
+                       a native `title`, so the footer reads like the countdown
+                       above it and the note can be styled. */
+                    <Tooltip delay={150}>
+                      <Tooltip.Trigger
+                        role="presentation"
+                        tabIndex={-1}
+                        className="flex min-w-0 cursor-default"
+                      >
+                        <span className="truncate">
+                          Next{" "}
+                          <span className="tabular-nums">
+                            {nextRunClock(nextDraw, longCadence)}
+                          </span>
+                        </span>
+                      </Tooltip.Trigger>
+                      <Tooltip.Content className="max-w-[16rem] text-xs leading-snug">
+                        {`Draws ${cadence} · next ${nextRunClock(nextDraw, longCadence)} — the draw cron runs on UTC.`}
+                      </Tooltip.Content>
+                    </Tooltip>
                   )}
                   {/* Same quiet link treatment as "open beacon" on /draws:
                       thin, underlined, inherited colour, small arrow. */}
@@ -811,95 +1134,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Eligible holders — count + share of all holders (same flex
-                column as the timer tile, footer pinned to the bottom) */}
-            <div className="relative flex flex-col overflow-hidden rounded-lg border border-(--border) bg-surface p-4 sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm text-muted">
-                  Eligible holders
-                </span>
-                {loading ? (
-                  <Skeleton className="h-[22px] w-24 rounded-full" />
-                ) : (
-                  <Chip size="sm" variant="soft" color="default">
-                    {status?.minTokenEligibleHuman ? `Min ${minEligibleHuman} ${tokenName}` : "Minimum balance"}
-                  </Chip>
-                )}
-              </div>
-              <div className="mt-4 flex flex-col gap-1">
-                {loading ? (
-                  <Skeleton className="h-9 w-24 sm:h-10 sm:w-28" />
-                ) : (
-                  <span className="font-mono text-3xl font-semibold leading-none tracking-tight tabular-nums sm:text-4xl">
-                    <CountUp value={eligibleHolders} />
-                  </span>
-                )}
-                {loading ? (
-                  <Skeleton className="h-3 w-24" />
-                ) : (
-                  <span className="text-xs text-muted">
-                    {eligibleHolders > 0
-                      ? "holders qualify"
-                      : "No wallet meets the minimum yet"}
-                  </span>
-                )}
-              </div>
-              <div className="mt-auto pt-5">
-                <ProgressBar
-                  aria-label="Share of holders eligible"
-                  value={eligibleShare}
-                  maxValue={100}
-                  size="sm"
-                  color="success"
-                  className="gap-1.5"
-                >
-                  <ProgressBar.Track className="bg-default/40">
-                    {/* Eased width so a fresh snapshot visibly lands instead of
-                        snapping — the bar's only source of motion. */}
-                    <ProgressBar.Fill className="bg-success transition-[width] duration-700 ease-out" />
-                  </ProgressBar.Track>
-                </ProgressBar>
-                {/* Two words only: the tile title already says "Eligible
-                    wallets", so the footer just carries the share. Totals,
-                    snapshot age and refresh cadence live in the tooltip. */}
-                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted">
-                  {loading ? (
-                    <Skeleton className="h-3 w-20" />
-                  ) : (
-                    <span
-                      className="font-mono tabular-nums"
-                      title={
-                        [
-                          totalHolders > 0
-                            ? `${Math.round(eligibleShare)}% of ${totalHolders.toLocaleString()} tracked holders qualify`
-                            : null,
-                          status?.lastSyncAt
-                            ? `Snapshot taken ${timeAgo(status.lastSyncAt)}`
-                            : null,
-                          holderSyncCadence !== "—"
-                            ? `refreshed ${holderSyncCadence}`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || undefined
-                      }
-                    >
-                      {totalHolders === 0
-                        ? "No holders yet"
-                        : `${Math.round(eligibleShare)}% eligible`}
-                    </span>
-                  )}
-                  <Link
-                    href="/eligibility"
-                    aria-label="View all wallets"
-                    className="-my-1 inline-flex items-center gap-1 py-1 underline transition-colors hover:text-foreground"
-                  >
-                    View all
-                    <Icon name="arrow-right" className="h-3.5 w-3.5" />
-                  </Link>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
 
@@ -943,7 +1177,7 @@ export default function Home() {
           <div className="flex flex-col gap-1.5">
             <Typography type="h4">How a draw works</Typography>
             <Typography type="body-sm" color="muted" className="max-w-2xl">
-              We snapshot every wallet holding {minRule}, draw {winnerCount} winners with a
+              We snapshot every wallet meeting the minimum hold, draw {winnerCount} winners with a
               drand-seeded shuffle, and pay them in SOL. Anyone can re-run the draw in the browser to
               check the result.
             </Typography>
@@ -956,31 +1190,26 @@ export default function Home() {
             payoutDistribution={prize?.payoutDistribution}
           />
 
-          <div className="flex max-w-2xl gap-2.5">
-            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-warning text-(--warning-foreground)">
-              <TriangleAlert size={12} strokeWidth={2.4} aria-hidden="true" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p
-                id="flow-disclaimer"
-                className="text-sm font-semibold tracking-tight text-foreground"
-              >
-                Disclaimer
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-muted">
-                The animation shows how a draw works. It doesn’t show live odds. {tokenName} is a
-                lottery token, not an investment. Its price is set by the Pump.fun market. Prizes come
-                only from the creator-fee pool, and you can lose money holding it.
-              </p>
-              <Link
-                href="/how-it-works"
-                className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-accent underline-offset-4 hover:underline"
-              >
-                Read the full verification guide
-                <Icon name="arrow-right" className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-          </div>
+        <div className="mt-4 max-w-2xl">
+          <p
+            id="flow-disclaimer"
+            className="text-sm font-semibold tracking-tight text-foreground"
+          >
+            Disclaimer
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">
+            Not financial advice. {tokenName} is a memecoin with no intrinsic value or
+            expectation of financial return. Prizes come only from the creator-fee pool, and
+            the animation illustrates how a draw works; it doesn’t show live odds.
+          </p>
+          <Link
+            href="/how-it-works"
+            className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-muted underline decoration-(--border) underline-offset-4 transition-colors hover:text-foreground"
+          >
+            Read the full verification guide
+            <Icon name="arrow-right" className="h-3.5 w-3.5" />
+          </Link>
+        </div>
         </section>
       </div>
       </div>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ArrowBigUp, Flame } from "lucide-react";
 import {
   Chip,
   Table,
@@ -16,7 +17,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { useSite } from "@/components/providers/SiteProvider";
 import { ExternalLink, Icon, Skeleton, SkeletonRows } from "@/components/ui";
-import { explorerUrl, shortAddress, SOL_BALANCE_DIGITS } from "@/lib/format";
+import { explorerUrl, fmtDateTimeUtc, shortAddress, SOL_BALANCE_DIGITS } from "@/lib/format";
 import { DEMO_FEE_TXS } from "@/lib/demo-finance";
 import { summarizeBuyback, type BuybackData } from "@/lib/buyback";
 
@@ -456,6 +457,12 @@ function TxLink({
  * The `Sample` chip for `DEMO_FEE_TXS` is deliberately NOT here: it lives in the
  * wallet header (right of the title) so the placeholder rows are flagged before
  * the reader starts parsing the table.
+ *
+ * Body type is Geist Sans, same 12px as the buyback ledger below (`.table-compact`
+ * handles the size for both). These cells are labels, dates and SOL amounts — no
+ * hashes — so `font-mono` only made the two cards read like a different app next
+ * to the rest of the page. Amounts keep `tabular-nums`, which aligns digits the
+ * way mono did.
  */
 function TxTable({
   aria,
@@ -495,7 +502,7 @@ function TxTable({
             tabIndex={0}
             className="overscroll-x-contain focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
           >
-            <TableContent aria-label={aria} className="min-w-[21rem] font-mono">
+            <TableContent aria-label={aria} className="min-w-[21rem]">
               <TableHeader>
                 <TableColumn isRowHeader>ACTIVITY</TableColumn>
                 <TableColumn style={{ textAlign: "right" }}>AMOUNT</TableColumn>
@@ -529,7 +536,7 @@ function TxTable({
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between gap-2 border-t border-(--border) px-5 py-2">
-          <span className="font-mono text-[11px] tabular-nums text-muted">
+          <span className="text-[11px] tabular-nums text-muted">
             {start + 1}–{start + visible.length} of {rows.length}
           </span>
           <div className="flex items-center gap-1.5">
@@ -541,7 +548,7 @@ function TxTable({
             >
               <Icon name="arrow-left" className="h-3 w-3" /> Prev
             </button>
-            <span className="font-mono text-[11px] tabular-nums text-muted">
+            <span className="text-[11px] tabular-nums text-muted">
               {current + 1}/{totalPages}
             </span>
             <button
@@ -556,6 +563,43 @@ function TxTable({
         </div>
       )}
     </div>
+  );
+}
+
+
+/**
+ * Buyback / burn marker for the ledger's ACTIVITY cell. The old row tints
+ * (`.tx-row--buy` / `--burn`) are gone — at 12px they turned whole rows into
+ * status banners and the table read as a list of alerts. The kind is now a glyph
+ * in a tinted chip instead: lucide `ArrowBigUp` in green for a buyback, `Flame`
+ * in ink for a burn.
+ *
+ * The glyphs are painted **solid** (`fill="currentColor"` + a thin same-colour
+ * stroke), not lucide's default hollow outline: at 12px an outline arrow/flame
+ * reads as a stray squiggle next to the label. The chip is vertically centred by
+ * the flex row in the cell, which aligns it against the two-line label + date
+ * block rather than hanging it off the first line.
+ *
+ * The burn chip uses `--foreground` rather than a literal black: near-black text
+ * in the light theme, near-white in dark, so it keeps its contrast instead of
+ * vanishing into the dark surface. `aria-hidden` is set because the chip is
+ * redundant — the label beside it already says Buyback or Burn.
+ */
+function KindBadge({ kind }: { kind: "buy" | "burn" }) {
+  const buy = kind === "buy";
+  return (
+    <span
+      aria-hidden="true"
+      className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] ${
+        buy ? "bg-success/15 text-success" : "bg-foreground/10 text-foreground"
+      }`}
+    >
+      {buy ? (
+        <ArrowBigUp size={13} strokeWidth={1} fill="currentColor" />
+      ) : (
+        <Flame size={13} strokeWidth={1} fill="currentColor" />
+      )}
+    </span>
   );
 }
 
@@ -654,7 +698,7 @@ function BuybackCard({
             >
               <TableContent
                 aria-label="Buyback and burn transactions"
-                className="min-w-[23rem] font-mono"
+                className="min-w-[23rem]"
               >
                 <TableHeader>
                   <TableColumn isRowHeader>ACTIVITY</TableColumn>
@@ -664,16 +708,18 @@ function BuybackCard({
                 </TableHeader>
                 <TableBody>
                   {txs.map((t) => (
-                    <TableRow
-                      key={t.signature}
-                      className={t.kind === "buy" ? "tx-row--buy" : "tx-row--burn"}
-                    >
+                    <TableRow key={t.signature}>
                       <TableCell className="whitespace-nowrap">
-                        <span className="block text-foreground">
-                          {t.kind === "buy" ? "Buyback" : "Burn"}
-                        </span>
-                        <span className="block text-[10px] text-muted">
-                          {fmtTxDate(t.at)}
+                        <span className="flex items-center gap-2">
+                          <KindBadge kind={t.kind} />
+                          <span className="flex flex-col">
+                            <span className="text-foreground">
+                              {t.kind === "buy" ? "Buyback" : "Burn"}
+                            </span>
+                            <span className="text-[10px] text-muted">
+                              {fmtTxDate(t.at)}
+                            </span>
+                          </span>
                         </span>
                       </TableCell>
                       <TableCell className="text-right tabular-nums whitespace-nowrap text-foreground">
@@ -912,15 +958,9 @@ function fmtSolPrecise(sol: number, digits: number = 4): string {
  * input isn't a parseable date.
  */
 function fmtTxDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  // UTC + an explicit zone label: this card used to render the visitor's local
+  // time (e.g. 15:32 WIB next to an 08:32 UTC API value).
+  return fmtDateTimeUtc(iso);
 }
 
 /**

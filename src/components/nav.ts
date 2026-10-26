@@ -17,9 +17,9 @@ export const NAV: NavItem[] = [
 ];
 
 /**
- * External community links — rendered as an "Information" block pinned to the
- * bottom of the sidebar (same grouping otcdesks.cash uses for Docs / Terms / X,
- * minus the docs and terms pages this project doesn't have yet). Both entries
+ * External community links — rendered under the "Social media" heading pinned to
+ * the bottom of the sidebar (same grouping otcdesks.cash uses for Docs / Terms /
+ * X, minus the docs and terms pages this project doesn't have yet). Both entries
  * open in a new tab.
  *
  * PLACEHOLDER URLs — swap them for the real profiles. This is the only place

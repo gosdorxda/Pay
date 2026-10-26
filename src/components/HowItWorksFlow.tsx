@@ -451,7 +451,10 @@ function WinnerCard({
                   : "block truncate text-xs text-muted"
               }
             >
-              Awaiting draw
+              {/* Phone columns are ~92 px wide, so "Awaiting draw" wrapped into
+                  "Awaiting" / "draw" and made that card taller than its
+                  neighbours. One word on phones, the full phrase from desktop. */}
+              {dense ? "Awaiting" : "Awaiting draw"}
             </span>
           )
         }

@@ -2,7 +2,7 @@
 
 > Memory / handoff file. **Read this first** when resuming in a new Cline/GLM session.
 > For moving the project to another machine, see **`HANDOFF.md`**.
-> Last updated: 2026-10-25
+> Last updated: 2026-10-26
 
 ## What this is
 On-chain Solana token lottery ("Pay"). Holders of a token become eligible;
@@ -15,7 +15,7 @@ can re-derive the winners in-browser and cross-check the drand beacon value.
 ### Routes — `src/app`
 | Path | File | Notes |
 |---|---|---|
-| `/` | `page.tsx` | Home. Own sidebar (NOT AppShell). Sections: **hero card** (`h1` pitch + all-time proof stats — `Draws completed` / `Paid out to holders` from `/api/stats` — + CTAs and a plain `drand.sh ↗` link), **live strip** (`#draw`: 3 promo tiles in `lg:grid-cols-[1.6fr_1fr_1fr]` — prize pool (wide, inline `PoolArt` SVG + `.pool-sheen` animated gradient + winners/split & est. 1st-place strip), next-draw countdown (`fmtCountdown` + interval progress bar + a two-word `Next 03:00 UTC` footer, cadence in the tooltip), eligible holders (`CountUp` count + share-of-holders bar + `57% eligible` footer, totals/snapshot age in the tooltip)), collapsible **Recent draws** rows (`<RecentDraws/>`: #N · Pump.fun → Pay → drand → winner avatars · pool · Details ⌄, expanding into per-draw detail, paged 5 per page with Prev/Next) directly under the strip, then how-it-works animated flow (`#how`: Pump.fun → Pay engine → drand → Winners on one travelling dot, then one dot per winner — `FlowDot` driven by the single rAF timeline, no SMIL). All nav entries are real route links (Draws → `/draws`, no in-page toggle); the live-jackpot pill lives in `AppShell` (other routes) and is intentionally absent on `/` so the pool isn't shown twice above the fold. |
+| `/` | `page.tsx` | Home. Own sidebar (NOT AppShell). Sections: **hero card** (`h1` pitch + all-time proof stats — `Draws completed` / `Paid out to holders` from `/api/stats` — + CTAs and a plain `drand.sh ↗` link), **live strip** (`#draw`: 3 promo tiles in `lg:grid-cols-[1.6fr_1fr_1fr]` — prize pool (wide, inline `PoolArt` SVG + `.pool-sheen` animated gradient + winners/split & est. 1st-place strip), **middle** prize split (per rank: a 40px row — 28px metal-gradient medal carrying `1st` capping a chunky 12px `ProgressBar size="lg"` recessed track, with the payout + share in `text-xs` body font (no mono, same size as the eligibility footnote, 2px of air above the track) stacked over the track's right end, gradient fill + a `split-shine` sweep on the gold bar, header chip showing `≈ X SOL` of the split in the body font (no mono, `tabular-nums` kept) with a HeroUI `Tooltip` (`Tooltip.Trigger` = flex wrapper, non-focusable, styled dark bubble with the "net of the platform fee" copy) on hover, share from `firstPrizeSol / distribution[0]`, half-opacity `pool-sheen` wash behind the content, eligibility count + `/eligibility` link in the footer), **right** next-draw countdown (`fmtCountdown` + interval progress bar + a two-word `Next 03:00 UTC` footer, cadence in the tooltip)), collapsible **Recent draws** rows (`<RecentDraws/>`: #N · Pump.fun → Pay → drand → winner avatars · pool · Details ⌄, expanding into per-draw detail, paged 5 per page with Prev/Next) directly under the strip, then how-it-works animated flow (`#how`: Pump.fun → Pay engine → drand → Winners on one travelling dot, then one dot per winner — `FlowDot` driven by the single rAF timeline, no SMIL). All nav entries are real route links (Draws → `/draws`, no in-page toggle); the live-jackpot pill lives in `AppShell` (other routes) and is intentionally absent on `/` so the pool isn't shown twice above the fold. |
 | `/draws` | `draws/page.tsx` | Renders `<DrawsList />` inside `<AppShell>`. |
 | `/rounds/[n]` | `rounds/[roundNumber]/page.tsx` | Draw detail: summary (closed time, gross pool, holders, beacon round), winners + payout links, three in-browser checks (SHA-256, drand compare, `reproduceWinners()`), saved wallet list + exclusion counts + wallet lookup, saved randomness/signature, beacon chain. |
 | `/verify` | `verify/page.tsx` (+ `layout.tsx` metadata, `SeedToWinner.tsx`) | Standalone verify tool — pick a draw, two beacon checks in the browser (SHA-256 of the saved signature · drand published that round) plus a live winner re-run; draws without a saved randomness show **"Nothing to check for this draw"**, and skipped/failed rows use `skipReason()` instead of the stored error text. |
@@ -23,7 +23,7 @@ can re-derive the winners in-browser and cross-check the drand beacon value.
 | `/holders` `/eligibility` `/stats` `/live` `/admin` | respective `page.tsx` | Each uses AppShell. |
 | `/stats` | `stats/page.tsx` (+ `layout.tsx` metadata) | Client-rendered from `/api/stats` (all-time aggregates over every round, 30 UTC-day buckets, leaderboard top 8). Labels follow the API: `prizeSol` / `biggestPrize` are prize **pools** (fee included), `paidSol` is SOL actually sent; the chart's fee dot sums the window's `daily.feeSol`, not the all-time total. A failed fetch or `dbError` shows a neutral banner and suppresses the "no draw yet" sentence. |
 
-| `/treasury` | `treasury/page.tsx` (+ `layout.tsx` title/description) | Public money page: platform + fee wallet cards (live balances, Solscan + copy), per-wallet tx tables, Buyback & burn card, "How the money moves" policy card. Client-rendered off `/api/wallets` + `/api/rounds`; buyback figures come from `/api/buyback` (the JSON ledger `data/buyback.json`, edited in Admin → Buyback). Every figure degrades to a sentence (or a dash) rather than a confident `0` when a feed fails (`PolicyCard.available`, `WalletCard` notes, `BuybackCard.unavailable`, `fee.ledgerAvailable`). `/stats` keeps only a 3-stat strip linking here. |
+| `/treasury` | `treasury/page.tsx` (+ `layout.tsx` title/description) | Public money page: platform + fee wallet cards (live balances, Solscan + copy), per-wallet tx tables (Geist Sans, 12px like the buyback ledger, 5 rows/page), Buyback &amp; burn card, "How the money moves" policy card. Client-rendered off `/api/wallets` + `/api/rounds`; buyback figures come from `/api/buyback` (the JSON ledger `data/buyback.json`, edited in Admin → Buyback). Every figure degrades to a sentence (or a dash) rather than a confident `0` when a feed fails (`PolicyCard.available`, `WalletCard` notes, `BuybackCard.unavailable`, `fee.ledgerAvailable`). `/stats` keeps only a 3-stat strip linking here. |
 
 ### API — `src/app/api`
 - `status/route.ts` → `/api/status` (prize pool, eligible count, latest round, network)
@@ -46,6 +46,7 @@ can re-derive the winners in-browser and cross-check the drand beacon value.
 - **`DrandBeacon.tsx`** — shared drand evidence block + `VerifyButton` (beacon match against drand.sh + browser-side winner re-derivation via `reproduceWinners`). One implementation for `/` and `/draws`; `full` wraps the hex instead of ellipsising it, `verified` adds the DB-status chip, `chain` supplies the label and the drand.sh link. `HashRow` (copyable) lives here too.
 - **`ExclusionLabelChip.tsx`** — how an exclusion reason renders, shared by `/admin` and the public holder table: `EXCLUSION_LABEL_PRESETS` (`Split wallet` / `Sybil cluster` / `Bot / sniper` / `Team` / `Treasury`, each with lucide icon, chip colour + one-line hint), `matchExclusionPreset()`, `ExclusionLabelChip` (preset chip → `Tag` chip for free text → plain `Excluded` when unlabelled) and `VenueChip` (amber `Droplets` chip for the bonding curve / pool authority).
 - `AppShell.tsx` — sidebar shell for non-home pages (consumes `NAV`).
+- **`BrandMark.tsx`** — sidebar brand mark: `<img src="/drawfi_logo.png">` (28×28, `object-contain`) with an `onError` fallback to the old tinted initial, so the header still renders before the logo file is uploaded. Source path lives in one constant (`BRAND_LOGO_SRC`).
 - **`nav.ts`** — sidebar nav config. Single source of truth, consumed by `page.tsx` + `AppShell.tsx`.
 - `ui.tsx` — `Icon` set + `ThemeToggle` + primitives.
 - `NotifySubscribe.tsx` — notification subscription UI (currently unused — removed from /how-it-works; pending rebuild as group-info bot).
@@ -89,7 +90,228 @@ can re-derive the winners in-browser and cross-check the drand beacon value.
 ## Current state
 
 ### ✅ Done
-- **PM2 deployment path + `ecosystem.config.js` (2026-10-25, newest).** New repo-root
+- **Every front-end timestamp is UTC now (2026-10-26, newest).** A real bug, not a nicety: every
+  `toLocaleString` / `toLocaleDateString` on the site was called **without `timeZone`**, so it rendered
+  the visitor's clock. `/treasury`'s fee-wallet card showed `updated Oct 26, 15:32` (WIB) while the same
+  moment was `08:32` in the API and in the home countdown. New helpers in `src/lib/format.ts`:
+  **`fmtDateTimeUtc(iso | Date)`** → `Oct 26, 08:32 UTC` (year only when not the current UTC year,
+  `hourCycle: "h23"` so midnight never prints "24:00") and **`fmtDateUtc(iso | Date)`** → `Oct 26, 2026`;
+  `timeAgo()` stays relative but its >7-day fallback is pinned to UTC too. Migrated: `/treasury`
+  (`fmtTxDate` → wallet card, wallet tx table, buyback table), `/verify`, `/rounds/[n]`, `DrawsList`,
+  `RecentDraws`, `/admin` (`fmtTime` + the "next draw" clock), `admin/CreatorFeesCard` (`shortDate`),
+  `admin/TelegramBotPanel` (send log), `admin/ExclusionsCard` (`fmtDateUtc`), and the legacy `/holders` /
+  `/live` pages. **Admin → Buyback** was worse than cosmetic: its `datetime-local` inputs were *read* as
+  local time (`fromLocalInput`) and written back as local (`toLocalInput`), so an admin in WIB typed 15:32
+  and `/treasury` printed 08:32. Both now go through `toUtcInput` / `fromUtcInput` (UTC getters +
+  `${value}Z`), labels say `Next run (UTC)` / `When (UTC)`, and the hint states "Times are UTC".
+  Untouched because already correct: `nextRunClock` on `/`, `fmtDayMonth` on `/treasury`, the `/stats`
+  chart labels (`timeZone: "UTC"` server-side), and every numeric `toLocaleString`. **Verified:**
+  `npx tsc --noEmit` **0 errors**; helper exercised through `npx tsx` with `TZ=Asia/Jakarta` →
+  `2026-10-26T08:32Z` prints `Oct 26, 08:32 UTC`, midnight prints `00:05` (not `24:05`), an older date
+  prints `Mar 9, 2024, 23:59 UTC`, `null` → `—`, junk input returned as-is. **Display is now
+  VPS/browser-TZ independent** — but scheduling is not: `node-cron` in `scheduler.ts` is still called
+  without a `timezone` option, so cron fields follow the **server's** TZ, which is why
+  `DEPLOY-VPS.md` §2.3 (`sudo timedatectl set-timezone UTC`) stays mandatory. Optional hardening, not
+  applied: pass `{ timezone: "UTC" }` to each `cron.schedule` (it would shift an existing non-UTC prod box
+  by the offset, so pair it with the deploy step).
+- **Brand mark from `/public` + "Social media" heading (2026-10-26).** New
+  **`src/components/BrandMark.tsx`**: renders `<img src="/drawfi_logo.png">` at 28×28 (`rounded-md
+  object-contain`) in both sidebar headers (home has its own, other routes use `AppShell`), replacing the
+  tinted initial square; `onError` falls back to that initial so a missing/renamed file never shows a
+  broken-image glyph (the file is **not uploaded yet** — see Pending). The extension lives in one constant
+  (`BRAND_LOGO_SRC`) if the upload is a `.svg` / `.webp`. Both sidebars also renamed the bottom group
+  heading **`Information` → `Social media`**, dropped the weight (`font-semibold` → `font-normal`) and
+  raised it a notch (`text-[10px]` → `text-xs`); the `nav.ts` doc comment follows. `brandInitial` became
+  dead in both files and was removed. `npx tsc --noEmit` → **0 errors**.
+- **Home strip: two new numbers + a cadence chip + a gross-vs-net tooltip (2026-10-26).** `page.tsx`:
+  (1) **Prize pool footer rebuilt** — `Winners 3 · 50% / 30% / 20% · 1st prize ≈ 0.0006 SOL` only repeated
+  the tile's own description and the Prize split rows, so it became **`Min hold`** (`minTokenEligibleHuman`
+  + `tokenName`, tooltip with the threshold sentence) and **`Updated`** (`timeAgo(lastSyncAt)`, the age of
+  the snapshot behind every eligible count, `font-normal` rather than bold by request). Dead `splitLabel`
+  removed. (2) **Next-draw chip** swapped the tautological `Scheduled` for the **schedule itself**
+  (`cadenceChip` from `cadenceLabel`: `Hourly` / `Every 10m` / `Every 2h` / `Daily` / `Every 2d`,
+  `In progress` while drawing) and gained a **`h-[22px] w-20` skeleton** while `/api/status` is in flight —
+  it used to flash the fallback word `Scheduled` on first paint. (3) **Split chip tooltip** now explains
+  the difference the user spotted (0.0012 on the tile vs 0.0011 on the chip): a derived `feePct`
+  (`1 − splitPoolSol / prizePoolSol`, since `/api/status` doesn't expose the bps) feeds "The pool tile
+  shows the full 0.0012 SOL balance; the 5% platform fee is taken first, so ≈ 0.0011 SOL is what the
+  winners actually split." `npx tsc --noEmit` → **0 errors**; no browser pass.
+- **Copy pass: no duplicate min-hold number, "draws" not "lottery", honest disclaimer (2026-10-26).**
+  `page.tsx`: the hero subtitle and the "How a draw works" blurb both restated the token amount ("Hold at
+  least 1,000 PAY…") even though the strip now owns it, so they read **"Meet the minimum hold"** and
+  **"every wallet meeting the minimum hold"**, and the `minRule` phrase builder was deleted. The flow's
+  winner cards say **`Awaiting`** on phones (the ~92 px column wrapped the old two-word label and made that
+  card taller) and keep `Awaiting draw` from desktop. Disclaimer rewritten in standard memecoin voice —
+  "Not financial advice. {token} is a memecoin with no intrinsic value or expectation of financial return.
+  Prizes come only from the creator-fee pool, and the animation illustrates how a draw works; it doesn't
+  show live odds." — with the warning icon removed (plus its `TriangleAlert` import), `mt-4` breathing room
+  above it, and the "Read the full verification guide" link no longer accent/blue (`text-muted` +
+  `underline decoration-(--border)` + `hover:text-foreground`, arrow kept). `/how-it-works` H1 **"How the
+  lottery works" → "How draws work"**: "lottery" was the only place on the site using that word, it
+  over-claims (ticket-lottery / regulated framing) and it weakened the SEO match with the rest of the copy.
+- **`/eligibility` mobile pass (2026-10-26).** (1) The check-wallet form was one row (`flex-1` input +
+  `shrink-0` button), so at 375 px the field collapsed to ~150 px and the placeholder clipped; it now
+  stacks (`flex flex-col` → `sm:flex-row`, hairline moving from `border-t` to `sm:border-l`), the button is
+  full-width on phones and the input got `min-w-0`. (2) Data is no longer bold: the `Check wallet` label and
+  the `Stat` values went `font-semibold` → `font-medium`, and the balance/minimum figures in the result card
+  went `font-bold` → `font-medium` (banner headings stay bold — they're headings). (3) The 5-stat grid is
+  `grid-cols-2 sm:grid-cols-5`, so on phones `Snapshot` sat alone with an empty cell beside it — `Stat` and
+  `StatSkeleton` now accept `className` and Snapshot passes **`col-span-2 sm:col-span-1`** (skeleton
+  included, so nothing jumps). `npx tsc --noEmit` → **0 errors**.
+- **Hero CTAs are inline on phones too (2026-10-26).** `src/app/page.tsx`: the CTA row was
+  `flex flex-col` with `w-full` buttons, so at 390 px `View draws` / `How draws work` stacked as two
+  full-width bars (324 px each) instead of sitting side by side. Both buttons lost `w-full` and
+  `sm:w-auto`, and the row is now **`flex flex-wrap items-center gap-2 sm:gap-2.5`** (no `flex-col` /
+  `sm:flex-row`), so the pair reads like desktop at every width and only wraps if the trailing
+  `drand.sh` link runs out of room. Sizes/weights untouched (`h-9`, `text-xs`, `font-medium`, same
+  hover/focus states). `npx tsc --noEmit` → **0 errors**; browser re-check not run (fast mode).
+- **Strip footnotes now speak one language — two HeroUI tooltips, zero native `title` (2026-10-26).**
+  Closes both optional follow-ups left by the 2026-10-25 prize-split pass, in `src/app/page.tsx`:
+  (1) **`… eligible` footnote** — the last native-`title` bubble in the middle tile is now a real `Tooltip`
+  (`delay={150}`, `Tooltip.Content` = `max-w-[16rem] text-xs leading-snug`) carrying the same four facts
+  (minimum hold · share of tracked holders · snapshot age · refresh cadence) and a
+  `"No holder snapshot yet."` fallback instead of the old `|| undefined`; the trigger is the established
+  `role="presentation" tabIndex={-1}` + **`flex min-w-0`** wrapper, so the truncating label still shrinks and
+  the wrapper adds no line-box. The label lost its (inert) `font-mono` — plainly `text-xs` Geist Sans
+  `tabular-nums`, matching the payout caption 12 px above it.
+  (2) **Countdown cadence note** — `Next 03:00 UTC` swapped its native `title` for the same pattern
+  (`Draws hourly · next 08:00 UTC — the draw cron runs on UTC.`), and its clock span lost `font-mono` as well.
+  Both footers stay one 16 px line each. **Verified:** `npx tsc --noEmit` **0 errors**, `GET /` **200**;
+  CDP at **1440** → split **298×253**, countdown **298×253** (identical to the pre-change baseline), both
+  tooltips open from a real `Input.dispatchMouseEvent` (`Emulation.setFocusEmulationEnabled` first) as the
+  dark bubble `oklch(0.2103 …)`, **12 px**, radius 12, padding 8, width **256** (cadence) / **146** (footnote);
+  at **390** → split **358×236** (unchanged), `scrollWidth 390 === innerWidth 390`, trigger **87×16**.
+  Temporary CDP scripts/profiles deleted afterwards.
+- **Geist Mono removed — one typeface everywhere (2026-10-26).** On request the mono cut is
+  gone. `src/app/layout.tsx` no longer imports `geist/font/mono` (so the mono webfont files are never
+  requested again) and `<html>` carries only `GeistSans.variable`; `src/app/globals.css` now sets
+  `--font-mono: var(--font-sans)` inside `@theme`, so every existing `font-mono` utility — hash and
+  address cells, the 48 px prize-pool figure, the countdown, rank badges, tooltips, Admin code
+  fields — renders in **Geist Sans** without touching the ≈160 class usages in 25 files.
+  `tabular-nums` is what keeps digits aligned now. Verified over CDP on `/`, `/draws`, `/stats`,
+  `/treasury`, `/eligibility`, `/verify`, `/how-it-works`: the only computed family is **GeistSans**
+  (242 leaf nodes on `/`), the `--font-mono` token resolves to the GeistSans stack, there are **zero**
+  `as="font"` preloads for the mono face, and `<html class>` is the single `__variable_4cefcd`.
+  `npx tsc --noEmit` → **0 errors**, every route **200**. Deliberately not done: deleting the
+  `font-mono` classes — they are now inert aliases, and one token change brings mono back.
+  `globals.css`, `layout.tsx` and `.clinerules` carry a note so a later session doesn't re-add the
+  import.
+- **Home hero CTAs one notch smaller, medium weight (2026-10-26; the mobile stacking it measured is superseded above).** On request, `View draws`
+  and `How draws work` in `src/app/page.tsx` both dropped from `h-10` / `text-sm` / `font-semibold`
+  to **`h-9` (36 px) / `text-xs` (12 px) / `font-medium`**, so the pair reads as chrome instead of
+  competing with the 20 px proof numbers above them. Padding tightened with the size: primary
+  `px-4 → px-3.5` (`sm:px-5 → sm:px-4`), secondary `px-3.5 → px-3` (`sm:px-4 → sm:px-3.5`),
+  `gap-2 → gap-1.5`, and both glyphs (arrow-right, how) `h-3.5 w-3.5 → h-3 w-3` so they stay
+  proportional at 12 px. Everything else is unchanged: the accent sheen sweep, the arrow step, the
+  `shadow-sm → hover:shadow-md hover:shadow-accent/25` lift, the filled secondary (`bg-default/40 →
+  hover:bg-default/70`) and the accent focus outline. Measured over CDP at **390 / 1440**:
+  `height 36`, `font-size 12px`, `font-weight 500`, family **GeistSans** on both; widths
+  **324 px** stacked on phones, **114.6 / 141.4 px** inline at 1440; `docScrollW === innerW` at 390
+  (no overflow). `npx tsc --noEmit` → **0 errors**.
+- **Prize-split tile: tile order, bigger caption, chunky bar, chip tooltip (2026-10-25, newest).** Four
+  passes on the middle tile in `page.tsx`, all measured in headless Chrome:
+  (1) **Tile order** — the strip now reads *Prize pool → Prize split → Next draw*; the JSX blocks were
+  physically reordered (no CSS `order`), so DOM/tab/reflow order matches what is on screen.
+  (2) **Payout caption** — the per-row `SOL` + `%` line went `text-[9px]` → **`text-xs` (12px)**,
+  `leading-none`, and **lost `font-mono`** (Geist Sans now, same as body); `tabular-nums` kept so the
+  numbers stay column-aligned.
+  (3) **Bar + row height** — `ProgressBar size="md"` (8px) → **`size="lg"` (12px)**, row `h-8` → **`h-10`
+  (40px)** so 12px label + 2px of air + 12px track fits while the track stays centred on the 28px medal
+  (`medCenter` 20 = `trackCenter` 20); row `gap-2.5` → `gap-2` keeps the desktop tile at **253px**.
+  Loading skeletons follow (`h-10` rows, `h-3` bar placeholder).
+  (4) **Header chip** — `≈ X SOL` used to be `font-mono` with the explanation in a native `title`
+  (browser bubble, no CSS). Now the chip is the **body font** (`tabular-nums` kept) and the note is a
+  real HeroUI **`Tooltip`** (`delay={150}`, `Tooltip.Content` = `max-w-[16rem] text-xs leading-snug`):
+  "Net of the platform fee — ≈ X SOL would be split between the winners if the draw ran now."
+  `Tooltip.Trigger` is a **`flex`** wrapper with `role="presentation" tabIndex={-1}` — the chip has no
+  action so it must not become a tab stop, and `flex` is required (see gotcha below).
+  Verified: `npx tsc --noEmit` **0**; `GET /` **200**; CDP 1440 → tiles `477 / 298 / 298` × **253**,
+  390 → **358** wide, split **236** tall, `scrollWidth === innerWidth` (no horizontal overflow), chip
+  `font-family` first token = **GeistSans** at **12px**; tooltip on hover computes
+  `bg oklch(0.2103 0.003 253.83)`, white text, **12px**, radius **12px**, padding **8px**, width **256px**.
+  Two gotchas worth remembering: **(a)** `Tooltip.Trigger` renders a `div`, so a bare block wrapper
+  inflates the header line-box and grows the tile **253 → 256** (mobile **236 → 240**) — `className="flex"`
+  pins it to the chip's own height; **(b)** headless Chrome does **not** open RAC tooltips on hover unless
+  `Emulation.setFocusEmulationEnabled { enabled: true }` is sent first (`document.hasFocus()` is `false`
+  and react-aria swallows the hover) — without it a working tooltip looks dead. `npm run lint` is still
+  broken repo-wide (Next 16 removed `next lint`) — pre-existing, left alone.
+- **Prize-split tile: podium medals, metal-gradient bars, gold shimmer (2026-10-25, newest).** Same
+  28px rows, more to look at: `rankChip` (flat `*-100` chip) is gone from `page.tsx` and replaced by
+  **`rankMedal`** — a `bg-linear-to-br from-*-200 via-*-300 to-*-500` coin with a matching
+  `shadow-*-500/40` drop, so the ordinal sits on struck metal instead of a label tint; the seam
+  `ring-2 ring-surface` stays. `rankBar` turned into `bg-linear-to-r from-500 via-400 to-300` fills
+  (gold / silver / bronze), the track is now a recessed groove
+  (`bg-default/50 shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)]`), and the gold bar carries
+  `.split-shine` — a new `globals.css` pseudo-element sweep (`split-shine-sweep`, 4.5s, reduce-motion
+  guarded) clipped by the fill's own `overflow-hidden`, so 1st place reads as live metal. The tile
+  also picked up the pool card's family look: a **half-opacity `pool-sheen` wash** as its first child
+  (dimming lives on a wrapper, because `.pool-sheen` animates its own opacity and would override
+  `opacity-50`), with every sibling switched to `relative` so the wash never covers text. The header
+  chip now carries data instead of a word — `≈ {fmtSolHuman(splitPoolSol)}` (mono, tabular) with the
+  "net of the platform fee" note in its `title`, falling back to `Estimate` when the pool is empty;
+  in that empty state the share percentage is promoted from `text-muted` to full-strength
+  `font-medium` so the row isn't three grey bars. Verified: `npx tsc --noEmit` **0**; `GET /` **200**;
+  CDP at 1440 / 390 — rows still **28px**, track **8px**, tiles **253 / 204px** (nothing grew),
+  `background-image` resolves to real oklch gradients on both medals and bars, `::after` on the gold
+  fill reports `split-shine-sweep`, the sheen wrapper computes `opacity 0.5` with
+  `pool-sheen-drift` on the inner layer, `elementFromPoint` over the "Prize split" label hits the
+  span (not the wash), and no row overflows horizontally.
+- **Home strip: prize-split tile replaces the eligible-holder headline (2026-10-25).** The
+  third live tile is now **Prize split**: three compact single-row bars — a 28px gold/silver/bronze
+  circle carrying the ordinal (`1st`, 9px regular, no bold) with a HeroUI `ProgressBar size="md"`
+  track (8px) pulled left by half the circle (`-ml-3.5`, `ring-2 ring-surface` as the seam, the same
+  "attached avatar" trick as the winner stack in `RecentDraws`), and a 9px payout + share caption
+  (`0.0006 SOL 50%`) absolutely placed over the track's right end — inside the row's 28px, so the
+  caption adds no line height. Rows are **28px** with `gap-2.5`, which is what keeps the card
+  short (tile 204px at mobile vs 274px on the first label-above-bar draft). `rankChip` carries no
+  ring of its own any more (two `ring-*` utilities would fight the seam); `rankBar` paints the fill
+  (amber/slate/orange 400). Amounts derive from `firstPrizeSol / payoutDistribution[0]` (the API
+  already removed the platform fee), so the tile can't disagree with the pool card's est. 1st
+  prize; when the pool is empty the amount span is dropped and only the share shows. `valueLabel`
+  feeds `aria-valuetext` ("50% of the net pool"). Ranks 4+ collapse into `+N more winners share X%`
+  because `WINNER_COUNT` is unbounded. Eligibility shrank to a footer line (`{n} eligible`, with
+  min / % of tracked / snapshot age / sync cadence in the tooltip) plus the `/eligibility` "View
+  all" link, so "am I in" still lands above the fold. Hero CTAs trimmed one notch: `h-11 → h-10`,
+  `px-5/6 → px-4/5` and `px-4/5 → px-3.5/4`, icons 16 → 14px (then one more notch on 2026-10-26:
+  `h-9` / 12 px / `font-medium` — see the newest entry above). Verified `npx tsc --noEmit` **0
+  errors**, `GET /` **200**, and CDP at 390 / 1440: rows **28px**, circle 28px starting at the
+  track's left edge (track offset 14px), track **8px** and full width (226 / 302px), fill **50 / 30
+  / 20%**, caption bottom 1px above the track and flush with its right edge, tile **204px** at
+  mobile (at 1440 the 253px grid row is set by the pool tile, so this tile stretches and pins its
+  footer with `mt-auto`), no horizontal overflow.
+- **Home hero CTAs: taller, sheen sweep, filled secondary (2026-10-25).** `View draws` is a
+  `h-11` accent button now: one-pass `via-accent-foreground/25` light sweep on hover (rides the
+  `translate` property, clipped by `overflow-hidden`, hidden under `motion-reduce`), an arrow that
+  steps 0.5 right, `shadow-sm → hover:shadow-md hover:shadow-accent/25`, a 1px lift settling back on
+  `active`, and `focus-visible:outline-2 outline-offset-2 outline-accent`. `How draws work` stopped
+  being a bare outline: `bg-default/40`, the `how` glyph going muted → accent, `hover:border-accent/40
+  hover:bg-default/70`, same lift/focus. Both are `h-11 w-full` stacked under `sm` and inline above,
+  with the `drand.sh` link `self-center` on phones. Verified `tsc` 0, `/` 200, and dev CSS emits
+  `transition-[translate]`, `group-hover:translate-x-full`, `via-accent-foreground/25`,
+  `hover:shadow-accent/25`.
+- **Buyback ledger: row tints out, lucide kind badges in (2026-10-25).** The green/red
+  row backgrounds (`.tx-row--buy` / `.tx-row--burn` and their `@supports` block in `globals.css`)
+  are gone — at 12px they turned whole rows into status banners. The buy/burn distinction now
+  rides on an 18px icon chip in the ACTIVITY cell (`KindBadge` in `treasury/page.tsx`): lucide
+  **`ArrowBigUp`** on `bg-success/15 text-success` for a buyback, **`Flame`** on
+  `bg-foreground/10 text-foreground` for a burn. Both glyphs are painted **solid**
+  (`fill="currentColor"` + `strokeWidth={1}`) — lucide's hollow outline reads as a stray squiggle
+  at 13px — and the chip is vertically centred by the cell's flex row, so it lines up with the
+  middle of the label + date block instead of hanging off the first line. `--foreground` is used
+  instead of a literal black so the flame stays legible in dark mode; the chip is `aria-hidden`
+  because the label beside it already spells the kind. Both tints compile through the usual
+  `@supports (color-mix())` fallback (solid token colour on browsers without `color-mix`).
+- **`/treasury` wallet tables: sans, same size as buyback (2026-10-25).** The platform-
+  and fee-wallet ledgers were the only tables on the site typed in `font-mono` cell by cell,
+  which made those two cards read like a different app next to the Geist Sans page — it *is* the
+  same family (Geist), just the Mono cut. Both tables now render in **Geist Sans**, keep
+  `tabular-nums` on amounts (digits still line up under each other), and sit at the **same 12px /
+  8px** density as the buyback ledger — all three share `.table-compact`; an 11px "dense"
+  variant was tried for the two wallet cards and removed again as too small. The tx pager footer
+  (`1–5 of N`, `1/2`) lost its `font-mono` too, and the buyback table dropped it as well so one
+  page doesn't mix two typefaces. Wallet addresses, `/holders` and the winners table stay mono,
+  because there the strings really are hashes.
+- **PM2 deployment path + `ecosystem.config.js` (2026-10-25).** New repo-root
   **`ecosystem.config.js`** so the VPS can run the app under PM2 instead of systemd: `exec_mode:
   "fork"` with **1** instance (the scheduler lives inside the Next process — cluster or `-i max`
   would double rounds, syncs and payouts), `cwd: __dirname`, `script: "npm"` + `args: "run start"`
@@ -200,7 +422,9 @@ can re-derive the winners in-browser and cross-check the drand beacon value.
 
 - **`/treasury` header cards trimmed, "How the money moves" condensed (2026-10-22).** (1) **No chips on the two wallet cards**: the `Live` / `Treasury` / `Unavailable` / `Not configured` soft chips are gone — the balance (`—` when unknown) and the caption already carry that meaning, and a green "Treasury" chip next to a fee wallet that isn't even configured on this deployment was actively misleading. `WalletCard` lost the `chipLabel`/`chipColor` props; the header is now just `<h2>` (matching `BuybackCard`). `Chip` stays imported — the `Sample` chip in `TxCard` still uses it. (2) **Copy button removed**: `CopyButton` (icon-only, clipboard + check SVG, `setTimeout` reset) deleted along with its `Button` import and the wrapper `<div>` it lived in. The whole address strip is now a single anchor → Solscan, `title`/`aria-label` "open on the explorer", so the external glyph *is* the affordance (one click target instead of address-link + copy). (3) **`PolicyCard` condensed 5 rows → 3** and the sweep count dropped entirely (it only repeated the fee table): *Prize pool* (reserve), *Platform fee* (rate), *Fee destination* (buyback % + fee wallet link, or the no-key fallback). Footer copy shortened to "Every payout and fee sweep is a public Solana transaction. Verify a draw replays any round; how it works covers the fee maths." Now every card on the page shares one rhythm: `text-sm font-semibold tracking-tight` title, `text-xs text-muted` caption, mono numbers. **Gotcha:** splicing the old `CopyButton` out with PowerShell `Get-Content`/`Set-Content` double-encoded every non-ASCII char (— ’ ·) into mojibake, because PS 5.1 reads UTF-8 files as ANSI; re-pair fixed it with `ReadAllText(UTF8)` → `GetBytes(1252)` → `UTF8.GetString` → `WriteAllText(UTF8Encoding($false))`. Use the editor tool for non-ASCII files. **Verified:** `npx tsc --noEmit` → 0 errors, `npx eslint src/app/treasury/page.tsx` → 0 problems, `GET /treasury` → **200**; chunk has `How the money moves` / `no separate key configured` / `open on the explorer` and **no** `Copy address`, `Sweeps recorded`, or `Not configured`; mojibake count back to **0**.
 - **`/treasury` tables — no raw hashes, buyback spends in the fee ledger, friendlier fee copy (2026-10-22).** (1) **No signatures**: every `TX` cell now renders `TxLink` (new local component) = the literal `tx` + `arrow-up-right`, with `title`/`aria-label` "View transaction on the explorer" and the signature still in the href — an 88-char base58 string was noise that wrapped at 12px. Applies to the platform table, the fee table and the buyback table; `shortAddress()` is now only used for real addresses. (2) **Buyback shown in the fee table**: `feeTxs` appends one **negative** row per `kind: "buy"` leg out of `data/buyback.json` (label *Buyback purchase*), because that SOL leaves the fee wallet — without it the table implied 100% of fees stay put. Burn legs move tokens only (no SOL), so they stay in the Buyback & burn card; sample rows still only appear when nothing at all is recorded, never mixed with real ones. Card caption is now "platform fees swept here at payout time · buybacks spend out of it". (3) **Copy**: fee inflow labels are **"Earned from draw #N"** (was "Platform fee · draw #N") in both the live rows and `DEMO_FEE_TXS`; fee table `aria` = "Fee wallet activity — fees earned and buyback spends", empty note = "No fee sweep or buyback spend recorded yet." **Verified:** `npx tsc --noEmit` → 0 errors, `npx eslint` on both files → 0 problems, `GET /treasury` → **200**; treasury chunk contains `Earned from draw #42`, `Buyback purchase`, `View transaction on the explorer`, and contains **no** `Platform fee · draw` nor `shortAddress(t.signature`.
-- **`/treasury` buyback follow-up — no "Last run" tile, colour-coded rows (2026-10-22).** (1) The 4th headline tile was dropped at the user's request: the strip is now `grid-cols-1 sm:grid-cols-3` (Bought / Burned / SOL spent) and the next-run date moved up into the card header (`1 completed run · next 12 Nov`) so nothing was lost — it just isn't a tile any more. `BuybackSummary.lastAt` is still computed by `summarizeBuyback()` but no longer rendered anywhere. (2) Ledger rows are tinted by kind: buy = soft green, burn = soft red, via `.tx-row--buy` / `.tx-row--burn` (className on `TableRow`) in `globals.css`. Deliberately **not** black — a black row reads as "disabled" and disappears in dark mode. Both are `color-mix(in oklab, var(--success|--danger) N%, transparent)` inside `@supports (color: color-mix(in lab, red, red))`: **without that guard Lightning CSS rewrites every `color-mix()` as `background: var(--success)` + an @supports override, i.e. a *solid* green row on browsers that can't mix** — with it, the only fallback is no tint (today's look). Hover steps to 18% / 16%, which also restores pointer feedback because an unlayered rule beats HeroUI's layered `.table__row` hover. **Verified:** `npx tsc --noEmit` → 0 errors, `npx eslint src/app/treasury/page.tsx` → 0 problems, `GET /treasury` → **200**; served `layout.css` carries the `@supports` block verbatim; the treasury chunk contains `tx-row--buy`; `"Last run"` no longer appears in any dev chunk.
+- **`/treasury` buyback follow-up — no "Last run" tile, colour-coded rows (2026-10-22).**
+  *(Row tints superseded 2026-10-25 — the ledger is untinted again and the kind is shown by an
+  icon chip; the rest of this entry still stands.)* (1) The 4th headline tile was dropped at the user's request: the strip is now `grid-cols-1 sm:grid-cols-3` (Bought / Burned / SOL spent) and the next-run date moved up into the card header (`1 completed run · next 12 Nov`) so nothing was lost — it just isn't a tile any more. `BuybackSummary.lastAt` is still computed by `summarizeBuyback()` but no longer rendered anywhere. (2) Ledger rows are tinted by kind: buy = soft green, burn = soft red, via `.tx-row--buy` / `.tx-row--burn` (className on `TableRow`) in `globals.css`. Deliberately **not** black — a black row reads as "disabled" and disappears in dark mode. Both are `color-mix(in oklab, var(--success|--danger) N%, transparent)` inside `@supports (color: color-mix(in lab, red, red))`: **without that guard Lightning CSS rewrites every `color-mix()` as `background: var(--success)` + an @supports override, i.e. a *solid* green row on browsers that can't mix** — with it, the only fallback is no tint (today's look). Hover steps to 18% / 16%, which also restores pointer feedback because an unlayered rule beats HeroUI's layered `.table__row` hover. **Verified:** `npx tsc --noEmit` → 0 errors, `npx eslint src/app/treasury/page.tsx` → 0 problems, `GET /treasury` → **200**; served `layout.css` carries the `@supports` block verbatim; the treasury chunk contains `tx-row--buy`; `"Last run"` no longer appears in any dev chunk.
 - **Buyback ledger moved to JSON + `/treasury` type back to 12px (2026-10-22).** User decision: the buys and burns are executed by hand, so a DB table + input form was overkill — the ledger is now a plain editable JSON file. **Data:** `data/buyback.json` = `{ feeSharePct, supply, nextRunAt, updatedAt, txs[] }`; a row is `{ signature, at, kind: "buy"|"burn", sol?, tokens }` with tokens **always positive** (`kind` supplies the sign, so nobody types a `-`). **Derived, never stored:** `summarizeBuyback()` computes bought / burned / burnedPct / SOL spent / runs (one per buy leg) / last run from the rows, so the headline strip can't disagree with the table. **Code:** `src/lib/buyback.ts` (types + validation + maths, client-safe), `src/lib/buyback-store.ts` (server-only: missing file → empty ledger, malformed JSON or failed validation → throws naming the bad keys, atomic temp-file + rename write, `EROFS`/`EACCES` → read-only message), **`/api/buyback`** (public GET `{ buyback, summary }`; admin PUT → 401 without the session cookie, 400 `{ errors }` keyed `txs.0.sol` etc., 500 + message otherwise). **Admin:** new **Buyback** tab (`admin/BuybackPanel.tsx`, sits between Token Holders and System Log) — fee share / supply / next run + add-buy / add-burn rows (`datetime-local` ↔ ISO in the browser's timezone), Remove per row, live "treasury will show …" preview, Unsaved chip, Reload. **`/treasury`:** fetches `/api/buyback` next to wallets/rounds (`buybackError` banner when the file is broken), `BuybackCard` takes `data` instead of `DEMO_BUYBACK` and drops the **Sample** chip (it is the operator's own ledger now), renders "No buyback recorded yet — add the buy and burn rows in Admin → Buyback." on an empty file, and `PolicyCard`'s "Buyback share" reads `feeSharePct` (Sample chip removed). `DEMO_BUYBACK` / `DEMO_BUYBACK_TXS` / `DemoBuybackTx` deleted from `demo-finance.ts` — only `DEMO_FEE_TXS` remains. **Type size:** `.table-compact .table__cell` is back to `font-size: var(--text-xs)` / `line-height: 1.45` by request — these are read-only analytics in half-width cards, so 12px is wanted even though `/eligibility` keeps 14px; both sub-line dates went back to `text-[10px]`. **Verified:** `npx tsc --noEmit` → 0 errors; live round-trip — login → `PUT` buy+burn → **200**, file rewritten with `updatedAt`, rows newest-first, `summary { bought 2046667, burned 1771111, burnedPct 1.77, spentSol 1.386, runs 1 }`; invalid body → **400** with `feeSharePct` / `txs.0.signature` / `txs.0.at` / `txs.0.tokens` / `txs.0.sol` errors and the file untouched; unauthenticated `PUT` → **401**; `/treasury` + `/admin` → **200**; served `layout.css` has `font-size: var(--text-xs)`; treasury chunk carries `/api/buyback` + the empty-state copy and **no** `DEMO_BUYBACK`. **Caveat:** serverless filesystems are read-only/ephemeral — the panel returns the read-only message there, so edit the file in the repo or run on a writable host. `/stats` and `/rounds/[n]` still use the `external` icon glyph.
 - **`/treasury` table outbound icons aligned with `/eligibility` (2026-10-22; type-size half superseded above).** Two mismatches the page had drifted into. (1) **Cell type size:** `.table-compact` forced `font-size: var(--text-xs)` (**12px**), so treasury's mono values rendered a step smaller than the `/eligibility` / `/holders` table, whose cells keep HeroUI's default `.table__cell` **14px**. The rule now only owns geometry (12px inline / 8px block padding, 1.25rem outer so cells line up with the card's `px-5` header) and leaves `font-size: var(--text-sm)` / `line-height: 1.5` alone; both `TableContent`s dropped the inert `text-xs` in favour of `className="font-mono"` (HeroUI's layered `.table__cell` always beats an inherited size — the same reason `HoldersBrowser` never got 12px). The activity sub-line date went `text-[10px]` → `text-[11px]` so it sits one step under the 14px value instead of two. (2) **Icon glyph:** all four treasury outbound links used `Icon name="external"` (box with the arrow poking out) while the eligibility/holders table uses `arrow-up-right` (plain diagonal arrow), which is what the page was being compared against — `TxCard`'s tx cell, the buyback tx cell, the wallet address strip and `PolicyCard`'s fee destination now all use `arrow-up-right` at `h-3.5 w-3.5 text-muted` (the strip's trailing icon was `h-3 w-3`, now 3.5). **Verified:** `npx tsc --noEmit` → 0 errors, `npx eslint src/app/treasury/page.tsx` → 0 problems; `GET /treasury` → **200**; the page chunk carries `arrow-up-right` and **zero** `"external"`; dev `layout.css` now serves `.table-compact .table__cell { … font-size: var(--text-sm); line-height: 1.5 }`. **Note:** `/stats` and `/rounds/[n]` still use the `external` glyph — those are the remaining outliers if one glyph is wanted app-wide.
 - **`/treasury` decluttered: wallet-table footers + buyback chrome gone (2026-10-22).** (1) **`TxCard` lost its `note` prop** and the `px-5 py-3 text-xs` footer paragraph — the two long sentences ("One row per completed draw: the atomic payout tx…" and the three fee variants) restated what the rows already show, so each card is now just rows + pager. Sample disclosure survives as a tiny right-aligned `Sample` chip strip (`px-5 pt-3 pb-1`) driven by a new optional **`sample?: boolean`**, passed only by the fee table when it falls back to `DEMO_FEE_TXS` (`!feeTxs.live && feeTxs.draws === 0`), so `demo-finance.ts`'s "every consumer must label sample rows" rule still holds without a paragraph. (2) **`BuybackCard` rebuilt** from five stacked bands (title + blurb, four `BuybackTile`s, burn-share progress bar, placeholder paragraph) down to **header + headline figures + combined buy / burn table**: title + `Sample` chip on the left with `9 completed runs` on the right, then a hairline stat strip (`grid grid-cols-2 gap-px border-y bg-(--border) sm:grid-cols-4`, the `/stats` tile pattern) built from a new page-local **`BuybackStat`** (`dt` label / `dd` `text-xl sm:text-2xl` number + muted caption) — **Bought 18,420,000** (`PAY tokens`), **Burned 15,940,000** (`1.27% of supply`), **SOL spent 12.482 SOL** (`in 9 runs`), **Last run Oct 20** (`next Oct 27`, new `fmtDayMonth` helper pinned to `timeZone: "UTC"` so SSR and hydration agree) — because the first pass's single inline sentence (`9 runs · … · burned`) made the totals too small to read, then a 4-column table **`ACTIVITY | SPENT | TOKENS | TX`** — `Buyback` / `Burn` + `fmtTxDate`, `−1.386 SOL` (or `—` on burns), signed token amount in `text-success` / `text-foreground`, Solscan tx link. `BuybackTile` deleted; `feeSharePct` dropped from the summary because `PolicyCard` already states the 70% share. New sample rows **`DEMO_BUYBACK_TXS`** (+ exported `DemoBuybackTx` type) in `src/lib/demo-finance.ts`: two runs, burn row first (newest first), amounts matching `DEMO_BUYBACK`'s per-run averages; `BuybackCard` now takes `net` so links are cluster-correct. (3) **Outbound links aligned** with the rest of the project: tx links went `gap-1 text-muted` / `shortAddress(…,4,4)` / `h-3 w-3` → `gap-1.5 font-mono text-foreground hover:text-accent` / `6/6` / `h-3.5 w-3.5 text-muted` (the `/rounds`, `/stats`, `/holders` pattern), and the wallet-address strip keeps the full inline-code address but now carries the same `external` icon (`h-3 w-3 shrink-0 text-muted`) so it reads as an outbound link beside the copy button. **Verified:** `npx tsc --noEmit` → 0 errors, `npx eslint src/app/treasury/page.tsx src/lib/demo-finance.ts` → 0 problems; `GET /treasury` → **200**; served chunk `/_next/static/chunks/app/treasury/page.js` contains `Sample buyback and burn transactions` + `SPENT` and no longer contains `One row per completed draw` / `Fees in, supply out` / `Placeholder figures` / `sample:` tri-state leftovers.
@@ -301,7 +525,16 @@ can re-derive the winners in-browser and cross-check the drand beacon value.
 - **Public fee display in `DrawsList.tsx` — DEFERRED again (2026-10-25).** A derived line (`PayoutNote`: `prizePoolSol − Σ winner amounts` = platform fee — no DB field, no treasury address) shipped with the `/draws` honesty pass and was **removed on the user's request the same day**; the cards read cleaner without it. `LotteryRound.platformFeeLamports` is still persisted and projected by `/api/rounds` (BigInt→string) but unused publicly. The gross-vs-net explanation (pool shown includes the fee, winner amounts are net of `PLATFORM_FEE_BPS`) is best placed in `/how-it-works` step 4 "The prize is split by rank", which today only mentions rounding dust. Treasury wallet address stays admin-only (`/api/admin/info` `isAdmin` guard) — never expose publicly.
 
 ### ⏳ Pending / next
-- **Lockfile warning in `next build`** — Next infers the workspace root as `C:\Users\gosdo\Desktop\AI` because a stray `package-lock.json` sits one folder up (`C:\Users\gosdo\Desktop\AI\`). It only affects the labels in the build log / file tracing, and it disappears on a machine where the parent folder has no lockfile; silence it deliberately with `outputFileTracingRoot` in `next.config.mjs` if the parent lockfile stays.
+- **Upload `drawfi_logo.png` (waiting on the user).** `src/components/BrandMark.tsx` points at
+  **`public/drawfi_logo.png`**; until that file exists both sidebar headers fall back to the tinted initial
+  (no broken-image glyph). If the upload lands with another extension (`.svg`, `.webp`, `.jpg`), change the
+  single `BRAND_LOGO_SRC` constant — no other edit needed, just refresh.
+- **Optional: pin `node-cron` to UTC.** `scheduler.ts` calls `cron.schedule(...)` without options, so the
+  cron fields follow the **server's** timezone while the UI (`nextCronOccurrence`, all timestamps) speaks
+  UTC. Today that is handled by the deploy step (`sudo timedatectl set-timezone UTC`, DEPLOY-VPS.md §2.3).
+  Passing `{ timezone: "UTC" }` to the four `cron.schedule` calls would make the schedule TZ-independent —
+  but it shifts firing times on an already-running non-UTC box, so only do it together with the TZ switch.
+- **Lockfile warning in `next build` — cannot occur here any more.** Next used to infer the workspace root as `C:\Users\gosdo\Desktop\AI` because a stray `package-lock.json` sat one folder up; that file is **gone** (re-checked 2026-10-26, `Test-Path` false), so the build log no longer prints the "inferred your workspace root" notice. If it ever comes back (a parent-level `npm install`), silence it deliberately with `outputFileTracingRoot` in `next.config.mjs`.
 - **Optional: prune the old failed claim rows.** `CreatorFeeClaim` now holds 6 manual attempts from 24 Oct (2 confirmed `3LfBsn…a8E47v` for 0.001425 + 0.000204 SOL, 4 failed: two rent-exemption simulations from *before* the pre-check existed, one `pumpdev 400 No claimable fees`, one `Transaction not confirmed within 60s`). They render fine via `shortNote()`, so this is cosmetic only — delete the failed rows in Prisma Studio only if the `/admin` table should start clean.
 - **No git repo.** `git` is not installed on this machine, so there is no history and no baseline commit — the first thing to do on a machine that has git: `git init`, `git add .`, commit (`.gitignore` already excludes `.env`, `node_modules`, `.next`, `*.tsbuildinfo`).
 - **Buyback numbers live in `data/buyback.json` (no DB).** It starts empty (`txs: []`, `supply: 0`, no `nextRunAt`), so a fresh clone's `/treasury` shows dashes + "No buyback recorded yet"; this machine already has one manually-entered buy row from a live panel test. Fill it in Admin → Buyback — set `supply` or "burned %" stays hidden. On a serverless host the PUT returns the read-only message; edit the file in the repo and redeploy instead.
@@ -315,8 +548,16 @@ can re-derive the winners in-browser and cross-check the drand beacon value.
 4. `npx tsc --noEmit` → expect **0** → `npm run dev` → http://localhost:3000
 5. **Don't** run `db:push` / `db:migrate` against the existing Neon DB (it holds real rounds + holders; the additive `CreatorFeeClaim` table is already applied), and don't run `lottery:run` / `airdrop` / `holders:sync` unless you mean it — `LOTTERY_CRON_ENABLED=false` on purpose.
 6. **Sesi terakhir (24 Okt 2026) ditutup bersih:** kartu **Creator Fees** di `/admin` → App Info sudah dirombak (strip 4 biaya + `Claim history` sebagai tabel, `getRecentClaims(8)`) dan lolos `tsc` 0 error, `eslint` 0 masalah, `npm run build` ✓ 12.7s, plus audit headless Chrome pada build produksi (6 baris, 420px tanpa overflow). Tidak ada pekerjaan yang menggantung. Yang perlu dicek pertama di laptop baru: `npx tsc --noEmit` → `npm run dev` → buka `/admin` (login) dan pastikan kartu Creator Fees tampil dengan tabel, bukan blok flex lama.
+7. **Sesi 25 Okt 2026 juga ditutup bersih:** seluruh kerja landing page strip 3 tile sudah masuk ke `### ✅ Done` di atas (urutan tile, caption `text-xs` tanpa mono, `ProgressBar size="lg"` + row `h-10`, chip `≈ X SOL` pakai body font + `Tooltip` HeroUI). `npx tsc --noEmit` **0**, `GET /` **200**, audit CDP 1440 / 390 bersih (**253 / 236**), file `.tmp-cdp*.js` sudah dihapus dan Chrome headless dimatikan. Yang menggantung hanya hal opsional di `### ⏳ Pending / next` (footer `… eligible` → sans, tooltip serupa di teks cadence) — **keduanya sudah ditutup 26 Okt**, lihat bullet teratas di `### ✅ Done`.
+8. **Sesi 26 Okt 2026 ditutup dengan `npx tsc --noEmit` 0 error di setiap langkah** (browser pass hanya dipakai pada dua perubahan strip; sisanya sengaja "tanpa verif browser" atas permintaan). Yang dikerjakan, semua sudah masuk `### ✅ Done`: tooltip strip + hero CTA inline → footer Prize pool jadi **`Min hold` / `Updated`** → chip countdown jadi cadence (+ skeleton) & tooltip chip split menjelaskan gross vs net → copy min-hold tak lagi mengulang angka + H1 `/how-it-works` jadi "How draws work" + disclaimer memecoin → pass mobile `/eligibility` → brand mark `public/drawfi_logo.png` + heading "Social media" → **audit UTC seluruh front-end** (`fmtDateTimeUtc` / `fmtDateUtc`, 10 file, input Buyback baca/tulis UTC). Sisa pekerjaan: upload `drawfi_logo.png` dan (opsional) pin `node-cron` ke UTC — keduanya ada di `### ⏳ Pending / next`.
 
 ## Notes for the AI resuming this
+- **All user-facing times are UTC — use the helpers, never bare `toLocale*`.** `fmtDateTimeUtc()` /
+  `fmtDateUtc()` in `src/lib/format.ts` pin `timeZone: "UTC"` and append the `UTC` label; a
+  `toLocaleString()` without `timeZone` silently shows the visitor's clock (that class of bug made
+  `/treasury` read 15:32 WIB next to an 08:32 UTC API value). The **UI** is now TZ-independent, but
+  **scheduling is not**: `node-cron` reads the server's TZ, so a VPS must be UTC (`timedatectl`) or the
+  countdown will disagree with when draws actually fire.
 - Always run `npx tsc --noEmit` after edits; fix all errors before declaring done.
 - Respect HeroUI theme tokens; avoid raw dark Tailwind colors that break the light/dark toggle.
 - Before touching the verify/draws UI, read `DrawsList.tsx`, `nav.ts`, `lib/lottery/verify.ts`.
@@ -325,3 +566,5 @@ can re-derive the winners in-browser and cross-check the drand beacon value.
 - **Never delete/rebuild `.next` while a dev server is running (learned 2026-10-24).** Removing `.next` or running `npm run build` next to a live `next dev` corrupts that dev server's cache: `⨯ Error: Manifest file is empty`, `⨯ SyntaxError: Unexpected end of JSON input` on API routes, and the page does a **full reload every few seconds**. Nothing in the source is wrong — stop and restart `npm run dev`. If you need a compiled check during UI work, don't fight the dev server: `npx next start -p 3100` (leave :3000 alone, `next start` reads the existing `.next` build) and point the browser check at **:3100**.
 - **UI verification recipe that actually works here (used 2026-10-24).** Headless Chrome + CDP: `chrome --headless=new --remote-debugging-port=9222 --user-data-dir=.tmp-chrome-profile`, read the real DOM over `Runtime.evaluate`, and stub admin endpoints with `Fetch.enable` + `Fetch.fulfillRequest` for `/api/admin/creator-fees` **and** `/api/admin/me` (that one intermittently 500s in dev, which bounces `/admin` to the login form — the usual cause of "card not found"). Authenticate with `POST /api/admin/login` from Node and push the `pay_admin_session` cookie via `Network.setCookie`. Always redirect output to a log file and `Get-Content` it; long `npx`/CDP commands piped straight to stdout often come back empty in this shell.
 - **Admin page needs a real session.** `/admin` renders the login form when `/api/admin/me` fails, so any DOM assertion on the Creator Fees card must set the session cookie first — a 200 on `/admin` proves nothing.
+- **Headless CDP needs focus emulation before testing hover/focus (learned 2026-10-25).** React Aria (`Tooltip`, `Menu`, `Popover`, any `useHover`/`useFocus` path) stays closed in a headless page because `document.hasFocus()` is `false`. Send `Emulation.setFocusEmulationEnabled { enabled: true }` right after connecting, then real `Input.dispatchMouseEvent` moves open tooltips normally; also check `matchMedia('(hover: hover)')` (true once focus emulation is on). Synthetic `dispatchEvent(new PointerEvent('pointerover'…))` from `Runtime.evaluate` is **not** enough — it silently does nothing, which looks exactly like a broken tooltip. Measure the tooltip itself via `document.querySelector('[role="tooltip"]')` + `getComputedStyle` (bg, font, radius, width).
+- **`Tooltip.Trigger` is a `div`, so give it `flex` (learned 2026-10-25).** Hovering a `Chip` inside a bare `<Tooltip.Trigger>` block wrapper adds the wrapper's line-box to the header row: the prize-split tile grew **253 → 256** desktop / **236 → 240** mobile. `className="flex shrink-0"` makes the wrapper exactly as tall as the chip and the tile height returns to the measured baseline. Keep `role="presentation" tabIndex={-1}` when the trigger has no action (pattern already used in `RecentDraws.tsx`).

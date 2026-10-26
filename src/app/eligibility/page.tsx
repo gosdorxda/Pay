@@ -79,20 +79,25 @@ export default function EligibilityPage() {
           <div className="flex flex-col gap-4">
 
           <form onSubmit={check}>
-            <div className="flex items-stretch overflow-hidden rounded-lg border border-(--border) bg-surface transition focus-within:border-accent">
+            {/* Stacked on phones and inline from sm up: as one row the button
+                was `shrink-0` next to a `flex-1` input, so at 375 px the field
+                collapsed to ~150 px and the placeholder clipped. The hairline
+                between the two turns from a top border into a left border once
+                they sit side by side. */}
+            <div className="flex flex-col overflow-hidden rounded-lg border border-(--border) bg-surface transition focus-within:border-accent sm:flex-row sm:items-stretch">
               <input
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="Paste a Solana wallet address"
-                className="flex-1 bg-transparent px-4 py-2.5 font-mono text-sm outline-none"
+                className="min-w-0 flex-1 bg-transparent px-4 py-2.5 font-mono text-sm outline-none"
                 spellCheck={false}
                 autoComplete="off"
               />
               <button
                 type="submit"
                 disabled={loading}
-                className="inline-flex shrink-0 items-center gap-1.5 bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground transition hover:opacity-90 disabled:opacity-60"
+                className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 border-t border-(--border) bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground transition hover:opacity-90 disabled:opacity-60 sm:w-auto sm:border-l sm:border-t-0"
               >
                 <Icon name="search" className="h-4 w-4" />
                 {loading ? "Checking…" : "Check wallet"}
@@ -246,11 +251,11 @@ function ResultCard({ data }: { data: EligResp }) {
         <div className="grid grid-cols-2 gap-5">
           <div className="flex flex-col gap-1">
             <span className="text-sm text-muted">Your balance ({token})</span>
-            <span className="text-2xl font-bold tabular-nums tracking-tight text-foreground">{data.balanceHuman}</span>
+            <span className="text-2xl font-medium tabular-nums tracking-tight text-foreground">{data.balanceHuman}</span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-sm text-muted">Minimum ({token})</span>
-            <span className="text-2xl font-bold tabular-nums tracking-tight text-muted">{data.minTokenEligibleHuman}</span>
+            <span className="text-2xl font-medium tabular-nums tracking-tight text-muted">{data.minTokenEligibleHuman}</span>
           </div>
         </div>
         <ProgressBar

@@ -12,7 +12,7 @@ import {
 } from "@heroui/react";
 import { DrandBeacon } from "@/components/DrandBeacon";
 import { Icon, SkeletonRows } from "@/components/ui";
-import { fmtSolHuman, timeAgo } from "@/lib/format";
+import { fmtDateTimeUtc, fmtSolHuman, timeAgo } from "@/lib/format";
 
 /* ──────────────────────────────────────────────────────────────────────────
    Homepage "Recent draws" — collapsible rows, paged 5 at a time.
@@ -75,19 +75,7 @@ const explorer = (v: string, kind: "address" | "tx", net: string): string =>
     net === "devnet" ? "?cluster=devnet" : ""
   }`;
 
-const fmtTime = (iso: string | null): string => {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-};
+const fmtTime = (iso: string | null): string => fmtDateTimeUtc(iso);
 
 /** Podium tint for a winner rank chip — gold #1, silver #2, bronze #3. */
 const rankBadge = (rank: number): string => {

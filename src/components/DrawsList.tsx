@@ -6,7 +6,7 @@ import { CircleCheck, CircleX, Clock, Minus } from "lucide-react";
 import { Button, Chip } from "@heroui/react";
 import { DrandBeacon } from "@/components/DrandBeacon";
 import { CountUp, Icon, Skeleton, SkeletonRows } from "@/components/ui";
-import { fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
+import { fmtDateTimeUtc, fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
 
 type Winner = {
   rank: number;
@@ -50,14 +50,7 @@ const explorer = (v: string, kind: "address" | "tx", net: string): string =>
   `https://solscan.io/${kind === "tx" ? "tx" : "account"}/${v}${
     net === "devnet" ? "?cluster=devnet" : ""
   }`;
-const fmtTime = (iso: string | null): string => {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-};
+const fmtTime = (iso: string | null): string => fmtDateTimeUtc(iso);
 
 /**
  * Median interval (ms) between consecutive draws, derived from each round's

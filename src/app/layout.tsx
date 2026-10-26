@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Providers } from "@/components/providers/Providers";
 import { SiteProvider } from "@/components/providers/SiteProvider";
@@ -9,11 +8,12 @@ import { getSiteSeo, parseFavicon } from "@/lib/seo";
 import { getPaletteCss } from "@/lib/palette";
 
 /**
- * Geist (Vercel) — the single global font family, used for both sans and mono.
- * GeistSans.variable defines --font-geist-sans; GeistMono.variable defines
- * --font-geist-mono. The @theme block in globals.css maps --font-sans and
- * --font-mono to them, so the entire UI (including HeroUI components) renders
- * in Geist. Both are variable fonts (multiple weights, true bold).
+ * Geist Sans (Vercel) — the single global typeface for the whole UI.
+ * GeistSans.variable defines --font-geist-sans; the @theme block in globals.css
+ * points both --font-sans and --font-mono at that same stack (the mono cut was
+ * removed on 2026-10-26), so every `font-sans` / `font-mono` utility — including
+ * inside HeroUI components — renders in Geist Sans. It is a variable font, so
+ * `font-bold` / `font-semibold` produce true bold.
  */
 
 /**
@@ -115,7 +115,7 @@ export default async function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      className={GeistSans.variable}
     >
       <body className="font-sans">
         {paletteCss ? (

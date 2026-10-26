@@ -5,7 +5,7 @@ import { Chip } from "@heroui/react";
 import { ExternalLink } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Skeleton, SkeletonStat } from "@/components/ui";
-import { shortAddress, explorerUrl, fmtSolHuman } from "@/lib/format";
+import { fmtDateTimeUtc, shortAddress, explorerUrl, fmtSolHuman } from "@/lib/format";
 import { nextCronOccurrence } from "@/lib/cron-next";
 
 type LastRound = {
@@ -40,15 +40,8 @@ type StatusResp = {
 };
 
 function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
+  // UTC (see fmtDateTimeUtc), not the visitor's clock.
+  return fmtDateTimeUtc(iso);
 }
 
 function fmtCountdown(ms: number): string {

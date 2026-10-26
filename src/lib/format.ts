@@ -139,8 +139,49 @@ export function explorerUrl(
 }
 
 /**
+ * Absolute UTC timestamp for every surface that shows a clock time:
+ * `Oct 26, 08:32 UTC` (the year appears only when it isn't the current UTC
+ * year).
+ *
+ * Why a shared helper: the draw cron, the drand beacon, the holder snapshots
+ * and the chain are all UTC, but `toLocale*` without `timeZone` silently uses
+ * the visitor's clock — the treasury wallet card read "updated Oct 26, 15:32"
+ * (WIB) while the same moment read 08:32 in the API. `hourCycle: "h23"` avoids
+ * the en-US "24:00" quirk that `hour12: false` can produce at midnight.
+ */
+export function fmtDateTimeUtc(iso: string | Date | null): string {
+  if (!iso) return "—";
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (Number.isNaN(d.getTime())) return typeof iso === "string" ? iso : "—";
+  const sameYear = d.getUTCFullYear() === new Date().getUTCFullYear();
+  const stamp = d.toLocaleString("en-US", {
+    ...(sameYear ? {} : { year: "numeric" as const }),
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "UTC",
+  });
+  return `${stamp} UTC`;
+}
+
+/** Date only, UTC: `Oct 26, 2026`. */
+export function fmtDateUtc(iso: string | Date | null): string {
+  if (!iso) return "—";
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (Number.isNaN(d.getTime())) return typeof iso === "string" ? iso : "—";
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
  * Relative time string, e.g. "just now", "3 min ago", "2h ago", "5d ago".
- * Falls back to a medium-format date for anything older than a week.
+ * Falls back to a medium-format date (UTC) for anything older than a week.
  */
 export function timeAgo(iso: string | null): string {
   if (!iso) return "—";
@@ -156,7 +197,10 @@ export function timeAgo(iso: string | null): string {
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     if (days < 7) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString("en-US", { dateStyle: "medium" });
+    return new Date(iso).toLocaleDateString("en-US", {
+      dateStyle: "medium",
+      timeZone: "UTC",
+    });
   } catch {
     return iso;
   }

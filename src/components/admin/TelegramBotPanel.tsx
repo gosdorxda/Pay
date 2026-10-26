@@ -13,6 +13,7 @@ import {
   TextArea,
   TextField,
 } from "@heroui/react";
+import { fmtDateTimeUtc } from "@/lib/format";
 import { Skeleton } from "@/components/ui";
 import {
   DEFAULT_DRAW_TEMPLATE,
@@ -108,12 +109,7 @@ function toDraft(data: Overview): Draft {
 }
 
 function fmtTime(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("en-US", { hour12: false });
-  } catch {
-    return iso;
-  }
+  return fmtDateTimeUtc(iso);
 }
 
 function tokenLabel(source: TokenSource, hint: string | null): string {

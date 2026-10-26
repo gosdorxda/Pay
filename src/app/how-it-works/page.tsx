@@ -28,7 +28,7 @@ export default function HowItWorksPage() {
         <div className="max-w-3xl flex flex-col">
         {/* Header */}
         <header className="pb-8 border-b border-(--border)">
-          <Typography type="h4">How the lottery works</Typography>
+          <Typography type="h4">How draws work</Typography>
           <Typography type="body-sm" color="muted" className="mt-1.5">
             Hold at least the minimum {tokenName} and you are on the list for every draw, with
             no tickets and no sign-up. Creator fees from Pump.fun trading fill the prize pool,

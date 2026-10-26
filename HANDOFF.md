@@ -134,7 +134,17 @@ Buka folder `D:\Projects\Pay` di Cline, model GLM, lalu tempel:
 ```
 Baca PROJECT_CONTEXT.md, .clinerules, dan HANDOFF.md dulu, jangan edit apa pun sebelum itu.
 
-State terakhir (24 Okt 2026): kartu **Creator Fees** di `/admin` → App Info sudah dirombak —
+State terakhir (25 Okt 2026): tile strip di landing page `/` sudah selesai dirapikan —
+urutan sekarang **Prize pool → Prize split → Next draw**, caption payout tiap rank naik ke
+`text-xs` tanpa mono (Geist Sans, `tabular-nums`), bar memakai `ProgressBar size="lg"` (12px)
+dalam row `h-10` (40px), dan chip header `≈ X SOL` kini pakai body font + **Tooltip HeroUI**
+("net of the platform fee") menggantikan `title` native. Lolos `npx tsc --noEmit` 0 error,
+`GET /` 200, audit CDP 1440/390: tile **253px** desktop / **236px** mobile, tanpa overflow.
+Catatan: `npm run lint` rusak repo-wide (Next 16 menghapus `next lint`) — bukan dari perubahan ini.
+Detail lengkap + angka ukur ada di `PROJECT_CONTEXT.md` → `### ✅ Done` (entri paling atas) dan
+`## Notes for the AI resuming this` (dua catatan baru soal `Tooltip.Trigger` + focus emulation).
+
+Sebelumnya (24 Okt 2026): kartu **Creator Fees** di `/admin` → App Info dirombak —
 strip 4 biaya (claim fee / min wallet balance / net if claimed / signing wallet), baris payout +
 signer, dan `Claim history` sekarang **tabel** (When · Amount · Source · Status · Note · Tx,
 8 baris terakhir, pesan error di-clamp 2 baris, tabel scroll sendiri di layar sempit).

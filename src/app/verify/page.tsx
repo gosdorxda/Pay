@@ -6,7 +6,7 @@ import { Chip, Label, ListBox, Select, Typography } from "@heroui/react";
 import { AppShell } from "@/components/AppShell";
 import { SeedToWinner } from "@/components/SeedToWinner";
 import { ExternalLink, Skeleton } from "@/components/ui";
-import { fmtSolHuman } from "@/lib/format";
+import { fmtDateTimeUtc, fmtSolHuman } from "@/lib/format";
 
 type Winner = {
   rank: number;
@@ -48,15 +48,9 @@ type RoundsResp = {
 };
 
 function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
+  // Every timestamp on the site is UTC (see fmtDateTimeUtc) — the visitor's
+  // local clock made the same moment read two different times per page.
+  return fmtDateTimeUtc(iso);
 }
 
 /** A skip has several causes (no eligible wallets, empty pool, pool below the

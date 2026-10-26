@@ -15,7 +15,7 @@ import {
 } from "@heroui/react";
 import { AppShell } from "@/components/AppShell";
 import { Icon, Skeleton, SkeletonRows } from "@/components/ui";
-import { fmtTokenHuman } from "@/lib/format";
+import { fmtDateUtc, fmtTokenHuman } from "@/lib/format";
 
 type Holder = {
   address: string;
@@ -43,14 +43,8 @@ type Resp = {
 };
 
 function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString("en-US", {
-      dateStyle: "medium",
-    });
-  } catch {
-    return iso;
-  }
+  // UTC (see fmtDateUtc): a day boundary must not flip with the visitor's zone.
+  return fmtDateUtc(iso);
 }
 
 function shortAddr(addr: string, head = 6, tail = 6): string {

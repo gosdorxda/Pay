@@ -26,7 +26,7 @@ import { useSite } from "@/components/providers/SiteProvider";
 
 type DraftTx = {
   signature: string;
-  /** `datetime-local` value (local time, converted to ISO on save). */
+  /** `datetime-local` value in UTC (converted to ISO on save). */
   at: string;
   kind: BuybackKind;
   sol: string;
@@ -48,21 +48,25 @@ type BuybackResponse = {
   error?: string;
 };
 
-/** ISO → `datetime-local` (both in the browser's timezone, so no drift). */
-function toLocalInput(iso: string): string {
+/** ISO → `datetime-local`, read and written in UTC (the site's clock). */
+function toUtcInput(iso: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(
+    d.getUTCHours()
+  )}:${pad(d.getUTCMinutes())}`;
 }
 
-/** `datetime-local` → ISO. Empty stays empty (optional field). */
-function fromLocalInput(value: string): string {
+/**
+ * `datetime-local` → ISO. The value is read as UTC, matching every timestamp on
+ * the site (before this it was read as the browser's local time, so an admin in
+ * WIB typed 15:32 and /treasury showed 08:32). Empty stays empty (optional).
+ */
+function fromUtcInput(value: string): string {
   if (!value) return "";
-  const d = new Date(value);
+  const d = new Date(`${value}Z`);
   return Number.isNaN(d.getTime()) ? "" : d.toISOString();
 }
 
@@ -70,10 +74,10 @@ function toDraft(data: BuybackData): Draft {
   return {
     feeSharePct: String(data.feeSharePct),
     supply: data.supply > 0 ? String(data.supply) : "",
-    nextRunAt: toLocalInput(data.nextRunAt),
+    nextRunAt: toUtcInput(data.nextRunAt),
     txs: data.txs.map((t) => ({
       signature: t.signature,
-      at: toLocalInput(t.at),
+      at: toUtcInput(t.at),
       kind: t.kind,
       sol: t.kind === "buy" && t.sol != null ? String(t.sol) : "",
       tokens: String(t.tokens),
@@ -85,10 +89,10 @@ function toPayload(draft: Draft) {
   return {
     feeSharePct: Number(draft.feeSharePct || 0),
     supply: Number(draft.supply || 0),
-    nextRunAt: fromLocalInput(draft.nextRunAt),
+    nextRunAt: fromUtcInput(draft.nextRunAt),
     txs: draft.txs.map((t) => ({
       signature: t.signature.trim(),
-      at: fromLocalInput(t.at),
+      at: fromUtcInput(t.at),
       kind: t.kind,
       ...(t.kind === "buy" ? { sol: Number(t.sol || 0) } : {}),
       tokens: Number(t.tokens || 0),
@@ -212,7 +216,7 @@ export function BuybackPanel() {
 
   /** New rows go on top: the API sorts newest-first anyway. */
   function addTx(kind: BuybackKind) {
-    const at = toLocalInput(new Date().toISOString());
+    const at = toUtcInput(new Date().toISOString());
     setDraft((d) => ({
       ...d,
       txs: [{ signature: "", at, kind, sol: "", tokens: "" }, ...d.txs],
@@ -340,12 +344,12 @@ export function BuybackPanel() {
                   </TextField>
                 </Field>
                 <Field
-                  label="Next run"
-                  hint="Shown as “next …” on /treasury. Leave empty when nothing is scheduled."
+                  label="Next run (UTC)"
+                  hint="Shown as “next …” on /treasury. Times are UTC. Leave empty when nothing is scheduled."
                   error={errors.nextRunAt}
                 >
                   <TextField
-                    aria-label="Next run"
+                    aria-label="Next run (UTC)"
                     value={draft.nextRunAt}
                     onChange={(v) => setField({ nextRunAt: v })}
                     isInvalid={!!errors.nextRunAt}
@@ -458,9 +462,9 @@ export function BuybackPanel() {
                             </TextField>
                           </Field>
                         </div>
-                        <Field label="When" error={errors[`txs.${i}.at`]}>
+                        <Field label="When (UTC)" error={errors[`txs.${i}.at`]}>
                           <TextField
-                            aria-label={`When ${i + 1}`}
+                            aria-label={`When ${i + 1} (UTC)`}
                             value={t.at}
                             onChange={(v) => setTx(i, { at: v })}
                             isInvalid={!!errors[`txs.${i}.at`]}

@@ -42,6 +42,7 @@ import { CacheCard } from "@/components/admin/CacheCard";
 import { ExclusionLabelChip } from "@/components/ExclusionLabelChip";
 import { nextCronOccurrence } from "@/lib/cron-next";
 import {
+  fmtDateTimeUtc,
   formatSol,
   fmtSolHuman,
   fmtTokenHuman,
@@ -199,14 +200,7 @@ const explorer = (v: string, kind: "address" | "tx", net: string): string =>
   `https://solscan.io/${kind === "tx" ? "tx" : "account"}/${v}${
     net === "devnet" ? "?cluster=devnet" : ""
   }`;
-const fmtTime = (iso: string | null): string => {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-};
+const fmtTime = (iso: string | null): string => fmtDateTimeUtc(iso);
 /**
  * Build a compact page list for pagination: always includes the first and last
  * page, a window of `siblings` pages around `current`, and ellipsis markers
@@ -714,7 +708,7 @@ function LiveStatusCard({
               info?.drawingRoundNumber != null
                 ? "in progress"
                 : nextDraw
-                ? nextDraw.toLocaleString()
+                ? fmtDateTimeUtc(nextDraw)
                 : undefined
             }
           />

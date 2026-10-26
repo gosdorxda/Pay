@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Breadcrumbs } from "@heroui/react";
 import { Icon, ThemeToggle } from "@/components/ui";
+import { BrandMark } from "@/components/BrandMark";
 import { INFORMATION, NAV } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 
@@ -17,7 +18,6 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const { brandName } = useSite();
-  const brandInitial = brandName.trim().charAt(0).toUpperCase() || "P";
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -71,7 +71,7 @@ export function AppShell({
       >
         <div className={`flex h-14 shrink-0 items-center gap-2 border-b border-(--border) px-4 ${collapsed ? "lg:justify-center" : ""}`}>
           <Link href="/" className="flex items-center gap-2" aria-label={`${brandName} home`}>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent/15 text-sm font-bold text-accent">{brandInitial}</span>
+            <BrandMark brandName={brandName} />
             {!collapsed && <span className="font-bold tracking-tight">{brandName}</span>}
           </Link>
           <button
@@ -125,7 +125,7 @@ export function AppShell({
               </Link>
             );
           })}
-          {/* Information — external community links pinned to the bottom of the
+          {/* Social media — external community links pinned to the bottom of the
               nav (the grouping otcdesks.cash uses for Docs / Terms / X, minus
               the docs and terms pages this project doesn't have). */}
           <div
@@ -133,9 +133,9 @@ export function AppShell({
             style={{ animationDelay: `${Math.min(70 + NAV.length * 22, 190)}ms` }}
           >
             <span
-              className={`px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
+              className={`px-3 pb-1 text-xs font-normal uppercase tracking-wider text-muted ${collapsed ? "lg:hidden" : ""}`}
             >
-              Information
+              Social media
             </span>
             {INFORMATION.map((item) => (
               <a

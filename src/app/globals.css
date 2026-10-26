@@ -2,15 +2,19 @@
 @import "@heroui/styles";
 
 /*
- * Project typography — Geist (Vercel) is the single global font family for both
- * sans and mono. Tailwind v4 reads these tokens, so every `font-sans` /
- * `font-mono` utility (including inside HeroUI components) resolves to Geist.
- * Both are variable fonts, so `font-bold` / `font-semibold` produce true bold.
+ * Project typography — Geist (Vercel) is the single global typeface.
+ * Geist Sans carries everything: the mono cut was removed on 2026-10-26, so
+ * `--font-mono` deliberately resolves to the same stack. Every `font-mono`
+ * utility left in the codebase (hash/address cells, big SOL figures, rank
+ * badges) therefore renders in Geist Sans — keep using `tabular-nums` where
+ * digits must stay column-aligned. Tailwind v4 reads these tokens, so HeroUI
+ * components follow too. Geist Sans is a variable font, so `font-bold` /
+ * `font-semibold` produce true bold.
  */
 @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
     BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-mono: var(--font-sans);
 }
 
 /*
@@ -146,16 +150,16 @@ section[id] {
   border-end-end-radius: 0;
 }
 
-/* Compact table — for small side tables nested inside a card (treasury tx
-   lists). HeroUI's .table__cell is a layered rule that hard-codes
-   font-size: var(--text-sm) + padding 1rem/0.75rem, so a `text-xs` className on
-   <TableContent> never reaches the cells. These unlayered rules win over the
-   layered default (same trick as .table-bordered above). Two deliberate deltas
-   from the /eligibility table: values run one step denser (12px, with 8px row
-   padding instead of 12px) because these are read-only analytics tucked into
-   half-width cards, and the outer columns keep 1.25rem so the first/last cell
-   lines up with the card's px-5 header instead of bleeding past it. Keep
-   .table-compact off full-width tables — 12px is too dense there. */
+/* Compact table — for small side tables nested inside a card (the treasury
+   wallet ledgers and the buyback ledger). HeroUI's .table__cell is a layered rule
+   that hard-codes font-size: var(--text-sm) + padding 1rem/0.75rem, so a
+   `text-xs` className on <TableContent> never reaches the cells. These unlayered
+   rules win over the layered default (same trick as .table-bordered above). Two
+   deliberate deltas from the /eligibility table: values run one step denser
+   (12px, with 8px row padding instead of 12px) because these are read-only
+   analytics tucked into half-width cards, and the outer columns keep 1.25rem so
+   the first/last cell lines up with the card's px-5 header instead of bleeding
+   past it. Keep .table-compact off full-width tables — 12px is too dense there. */
 .table-compact .table__cell {
   padding-inline: 0.75rem;
   padding-block: 0.5rem;
@@ -194,36 +198,6 @@ section[id] {
   content: none;
 }
 
-
-/* Buyback ledger row tints — one glance tells the two halves of a run apart:
-   a buyback row reads green, a burn row reads red. Both are low-alpha mixes of
-   the theme tokens (not raw black or hex) so they follow the light/dark toggle
-   and stay legible at 12px; unlayered so they beat HeroUI's layered
-   `.table__row` background, with matching `:hover` mixes so the row still
-   reacts to the pointer (a plain black row would read as "disabled" and would
-   disappear entirely in dark mode).
-
-   Wrapped in @supports on purpose: Lightning CSS rewrites every color-mix()
-   into `background: var(--success)` + an @supports override, so without this
-   guard a browser that can't mix would paint the row *solid* green. Here the
-   only fallback is no tint at all — exactly today's look. */
-@supports (color: color-mix(in lab, red, red)) {
-  .tx-row--buy {
-    background: color-mix(in oklab, var(--success) 10%, transparent);
-  }
-
-  .tx-row--buy:hover {
-    background: color-mix(in oklab, var(--success) 18%, transparent);
-  }
-
-  .tx-row--burn {
-    background: color-mix(in oklab, var(--danger) 8%, transparent);
-  }
-
-  .tx-row--burn:hover {
-    background: color-mix(in oklab, var(--danger) 16%, transparent);
-  }
-}
 
 /* Prize-pool card — slow accent→warning sheen drifting across the widest tile of
    the live strip. Two token-based radial gradients (color-mix on --accent /
@@ -275,6 +249,44 @@ section[id] {
 
 .pool-coin-float {
   animation: pool-coin-float 6s ease-in-out infinite;
+}
+
+/* Podium bars in the prize-split tile — a thin light sweep that travels along
+   the gold fill every few seconds so the 1st-place bar reads as "live metal".
+   The overlay sits inside the fill (which already clips via the track), so it
+   can never overflow the bar or touch layout. Reduced-motion users get the
+   static gradient only. */
+@keyframes split-shine-sweep {
+  0% {
+    transform: translateX(-130%);
+  }
+  55%,
+  100% {
+    transform: translateX(130%);
+  }
+}
+
+.split-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: linear-gradient(
+    100deg,
+    transparent 25%,
+    rgb(255 255 255 / 0.55) 50%,
+    transparent 75%
+  );
+  transform: translateX(-130%);
+  animation: split-shine-sweep 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .split-shine::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 /* Mobile drawer — the panel itself slides via Tailwind transitions; the links

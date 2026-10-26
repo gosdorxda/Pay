@@ -16,7 +16,7 @@ import {
 } from "@heroui/react";
 import { AppShell } from "@/components/AppShell";
 import { ExternalLink, Icon, Skeleton, SkeletonStat, SkeletonRows } from "@/components/ui";
-import { explorerUrl, fmtSolHuman, shortAddress } from "@/lib/format";
+import { explorerUrl, fmtDateTimeUtc, fmtSolHuman, shortAddress } from "@/lib/format";
 import { reproduceWinners } from "@/lib/lottery/verify";
 
 type Winner = {
@@ -125,14 +125,8 @@ function roundNote(round: Round): string {
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "Not recorded";
-  try {
-    return new Date(iso).toLocaleString("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch {
-    return iso;
-  }
+  // UTC, like every other timestamp on the site (see fmtDateTimeUtc).
+  return fmtDateTimeUtc(iso);
 }
 
 function hexToBytes(hex: string): Uint8Array {

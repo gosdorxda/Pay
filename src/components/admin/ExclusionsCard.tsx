@@ -17,6 +17,7 @@ import {
   ExclusionLabelChip,
   VenueChip,
 } from "@/components/ExclusionLabelChip";
+import { fmtDateUtc } from "@/lib/format";
 import { ExternalLink, SkeletonRows } from "@/components/ui";
 
 /**
@@ -387,7 +388,7 @@ export function ExclusionsCard({ network }: { network: string }) {
                         )}
                       </td>
                       <td className="px-4 py-2 text-muted text-xs">
-                        {new Date(e.createdAt).toLocaleDateString()}
+                        {fmtDateUtc(e.createdAt)}
                       </td>
                       <td className="px-4 py-2 text-right">
                         <Button

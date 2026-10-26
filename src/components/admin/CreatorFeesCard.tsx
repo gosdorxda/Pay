@@ -22,6 +22,7 @@ import type {
 import { ExternalLink } from "@/components/ui";
 import {
   explorerUrl,
+  fmtDateTimeUtc,
   fmtSolHuman,
   fmtSolNum,
   lamportsToSol,
@@ -63,10 +64,7 @@ function statusColor(status: string): "success" | "warning" | "danger" {
 }
 
 function shortDate(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
+  return fmtDateTimeUtc(iso);
 }
 
 /**

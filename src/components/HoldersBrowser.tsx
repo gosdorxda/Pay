@@ -131,7 +131,7 @@ export function HoldersBrowser({
             <StatSkeleton label="Eligible" />
             <StatSkeleton label="Minimum" />
             <StatSkeleton label="Eligible share" />
-            <StatSkeleton label="Snapshot" />
+            <StatSkeleton label="Snapshot" className="col-span-2 sm:col-span-1" />
           </div>
         </div>
       )}
@@ -143,7 +143,7 @@ export function HoldersBrowser({
             <Stat label="Eligible" value={<CountUp value={data.eligibleTotal} />} caption="in every draw" />
             <Stat label="Minimum" value={<CountUp value={thresholdNum} format={(n) => n.toLocaleString("en-US", { maximumFractionDigits: 4 })} />} caption="to qualify" />
             <Stat label="Eligible share" value={<CountUp value={eligibleRate} format={(n) => `${Math.round(n)}%`} />} caption="of all holders" />
-            <Stat label="Snapshot" value={timeAgo(data.capturedAt)} caption="last refreshed" />
+            <Stat label="Snapshot" value={timeAgo(data.capturedAt)} caption="last refreshed" className="col-span-2 sm:col-span-1" />
           </div>
         </div>
       )}
@@ -298,11 +298,11 @@ export function HoldersBrowser({
   );
 }
 
-function Stat({ label, value, caption }: { label: string; value: ReactNode; caption: string }) {
+function Stat({ label, value, caption, className = "" }: { label: string; value: ReactNode; caption: string; className?: string }) {
   return (
-    <div className="bg-surface px-4 sm:px-5 py-3 flex flex-col">
+    <div className={`bg-surface px-4 sm:px-5 py-3 flex flex-col ${className}`}>
       <span className="text-sm text-muted">{label}</span>
-      <span className="mt-1 text-xl sm:text-2xl font-semibold tabular-nums leading-tight break-words text-foreground">
+      <span className="mt-1 text-xl sm:text-2xl font-medium tabular-nums leading-tight break-words text-foreground">
         {value}
       </span>
       <span className="mt-1 text-xs text-muted">{caption}</span>
@@ -310,9 +310,9 @@ function Stat({ label, value, caption }: { label: string; value: ReactNode; capt
   );
 }
 
-function StatSkeleton({ label }: { label: string }) {
+function StatSkeleton({ label, className = "" }: { label: string; className?: string }) {
   return (
-    <div className="bg-surface px-4 sm:px-5 py-3 flex flex-col">
+    <div className={`bg-surface px-4 sm:px-5 py-3 flex flex-col ${className}`}>
       <span className="text-sm text-muted">{label}</span>
       <Skeleton className="mt-1 h-6 w-24" />
       <Skeleton className="mt-1 h-3 w-16" />
