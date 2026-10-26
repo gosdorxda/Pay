@@ -34,6 +34,7 @@ import { useSite } from "@/components/providers/SiteProvider";
 import { Skeleton } from "@/components/ui";
 import { SeoPanel } from "@/components/admin/SeoPanel";
 import { PalettePanel } from "@/components/admin/PalettePanel";
+import { FontPanel } from "@/components/admin/FontPanel";
 import { BuybackPanel } from "@/components/admin/BuybackPanel";
 import { CreatorFeesCard } from "@/components/admin/CreatorFeesCard";
 import { ExclusionsCard } from "@/components/admin/ExclusionsCard";
@@ -1460,6 +1461,10 @@ export default function AdminPage() {
                 Palette
                 <Tabs.Indicator />
               </Tabs.Tab>
+              <Tabs.Tab id="font">
+                Font
+                <Tabs.Indicator />
+              </Tabs.Tab>
             </Tabs.List>
           </Tabs.ListContainer>
           <Tabs.Panel id="overview" className="pt-4">
@@ -2000,6 +2005,9 @@ export default function AdminPage() {
           </Tabs.Panel>
           <Tabs.Panel id="palette" className="pt-4">
             <PalettePanel />
+          </Tabs.Panel>
+          <Tabs.Panel id="font" className="pt-4">
+            <FontPanel />
           </Tabs.Panel>
         </Tabs>
 

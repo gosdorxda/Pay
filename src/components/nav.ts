@@ -17,6 +17,19 @@ export const NAV: NavItem[] = [
 ];
 
 /**
+ * Active-link test shared by both sidebars (the homepage renders its own copy of
+ * the shell), so the two can never disagree about which row is highlighted.
+ * Sub-routes light up their parent: `/rounds/37` is opened from the draws list,
+ * so it keeps "Draws" active instead of leaving the sidebar with nothing lit.
+ */
+export function isNavActive(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  if (pathname === href || pathname.startsWith(href + "/")) return true;
+  if (href === "/draws" && pathname.startsWith("/rounds/")) return true;
+  return false;
+}
+
+/**
  * External community links — rendered under the "Social media" heading pinned to
  * the bottom of the sidebar (same grouping otcdesks.cash uses for Docs / Terms /
  * X, minus the docs and terms pages this project doesn't have yet). Both entries

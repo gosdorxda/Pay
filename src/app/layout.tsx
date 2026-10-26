@@ -6,6 +6,7 @@ import { Providers } from "@/components/providers/Providers";
 import { SiteProvider } from "@/components/providers/SiteProvider";
 import { getSiteSeo, parseFavicon } from "@/lib/seo";
 import { getPaletteCss } from "@/lib/palette";
+import { getFontConfig, getFontCss } from "@/lib/font";
 
 /**
  * Geist Sans (Vercel) — the single global typeface for the whole UI.
@@ -105,6 +106,10 @@ export default async function RootLayout({
   // Admin → Palette overrides, injected after globals.css. Empty when nothing
   // has been overridden, in which case no <style> tag is rendered at all.
   const paletteCss = await getPaletteCss();
+  // Admin → Font: a Google Fonts <link> + a --font-sans override. Both are
+  // absent for the default face (Geist is bundled with the build).
+  const font = await getFontConfig();
+  const fontCss = await getFontCss();
   // Re-validate before injecting: a stale malformed value must never end up in
   // an inline <script>.
   const gaId = /^G-[A-Z0-9]{4,20}$/i.test(seo.gaMeasurementId)
@@ -123,6 +128,20 @@ export default async function RootLayout({
             id="theme-palette"
             dangerouslySetInnerHTML={{ __html: paletteCss }}
           />
+        ) : null}
+        {font.href ? (
+          <>
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link
+              rel="preconnect"
+              href="https://fonts.gstatic.com"
+              crossOrigin="anonymous"
+            />
+            <link rel="stylesheet" href={font.href} />
+          </>
+        ) : null}
+        {fontCss ? (
+          <style id="theme-font" dangerouslySetInnerHTML={{ __html: fontCss }} />
         ) : null}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         {gaId ? (

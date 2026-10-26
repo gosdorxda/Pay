@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Breadcrumbs } from "@heroui/react";
 import { Icon, ThemeToggle } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
-import { INFORMATION, NAV } from "@/components/nav";
+import { INFORMATION, NAV, isNavActive } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 
 export function AppShell({
@@ -45,12 +45,6 @@ export function AppShell({
     };
   }, [mobileOpen]);
 
-  const isActive = (href: string) => {
-    if (href.startsWith("#")) return false;
-    if (href === "/") return pathname === "/";
-    return pathname === href || pathname.startsWith(href + "/");
-  };
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Backdrop stays mounted so it can fade both ways — an unmounted overlay
@@ -85,7 +79,7 @@ export function AppShell({
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
           {NAV.map((item, index) => {
-            const active = isActive(item.href);
+            const active = isNavActive(pathname, item.href);
             const cls = `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition w-full text-left ${collapsed ? "lg:justify-center lg:px-0" : ""} ${active ? "bg-default font-medium text-foreground" : "font-medium text-muted hover:bg-default/40 hover:text-foreground"} ${mobileOpen ? "drawer-item-in" : ""}`;
             // Stagger capped at 190ms so the last link never lags behind the
             // 300ms panel slide; mobile-only via the .drawer-item-in media query.
@@ -96,21 +90,6 @@ export function AppShell({
                 <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
               </>
             );
-            if (item.href.startsWith("#")) {
-              return (
-                <a
-                  key={item.label}
-                  href={"/" + item.href}
-                  onClick={() => setMobileOpen(false)}
-                  title={collapsed ? item.label : undefined}
-                  aria-current={active ? "page" : undefined}
-                  className={cls}
-                  style={itemStyle}
-                >
-                  {inner}
-                </a>
-              );
-            }
             return (
               <Link
                 key={item.label}

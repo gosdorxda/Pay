@@ -9,7 +9,7 @@ import HowItWorksFlow from "@/components/HowItWorksFlow";
 import RecentDraws from "@/components/RecentDraws";
 import { CountUp, ExternalLink, Icon, ThemeToggle, Skeleton } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
-import { INFORMATION, NAV } from "@/components/nav";
+import { INFORMATION, NAV, isNavActive } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 import { nextCronOccurrence } from "@/lib/cron-next";
 import { fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
@@ -454,14 +454,8 @@ export default function Home() {
     return a && b ? cadenceLabel(b.getTime() - a.getTime()) : "—";
   }, [status?.holderSyncCron]);
 
-  /** Active state matches AppShell: "Home" active on `/`, route links match
-      pathname. Draws is a real route now — the in-page view toggle is gone, so
-      clicking Draws navigates to /draws just like every other nav entry and the
-      URL always reflects the page you're on (bookmarkable, back/forward work). */
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname === href || pathname.startsWith(href + "/");
-  };
+  // Active state comes from `isNavActive` in nav.ts — the same helper AppShell
+  // uses, so `/rounds/37` keeps "Draws" lit here too.
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Mobile backdrop — always mounted so it fades out instead of popping. */}
@@ -496,7 +490,7 @@ export default function Home() {
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overscroll-contain p-3">
           {NAV.map((item, index) => {
-            const active = isActive(item.href);
+            const active = isNavActive(pathname, item.href);
             const cls = `flex items-center gap-3 rounded-md px-3 py-2 text-sm transition w-full text-left ${collapsed ? "lg:justify-center lg:px-0" : ""} ${active ? "bg-default font-medium text-foreground" : "font-medium text-muted hover:bg-default/40 hover:text-foreground"} ${mobileOpen ? "drawer-item-in" : ""}`;
             // Same stagger the AppShell drawer uses: 70ms base, 22ms per row,
             // capped at 190ms so the links land with the panel slide.
@@ -507,10 +501,11 @@ export default function Home() {
                 <span className={collapsed ? "lg:hidden" : ""}>{item.label}</span>
               </>
             );
-            // All nav entries are real route links now — Home → /, Draws → /draws,
-            // matching AppShell so the URL always reflects the page you're on.
+            // `next/link` (not a plain <a>) so the home sidebar navigates
+            // client-side, exactly like AppShell — a plain anchor forced a full
+            // reload from "/" but not from any other page.
             return (
-              <a
+              <Link
                 key={item.label}
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
@@ -520,7 +515,7 @@ export default function Home() {
                 style={itemStyle}
               >
                 {inner}
-              </a>
+              </Link>
             );
           })}
           {/* Social media — external community links pinned to the bottom of the
