@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowBigUp, Flame } from "lucide-react";
 import {
-  Chip,
   Table,
   TableBody,
   TableCell,
@@ -18,7 +17,6 @@ import { AppShell } from "@/components/AppShell";
 import { useSite } from "@/components/providers/SiteProvider";
 import { ExternalLink, Icon, Skeleton, SkeletonRows } from "@/components/ui";
 import { explorerUrl, fmtDateTimeUtc, shortAddress, SOL_BALANCE_DIGITS } from "@/lib/format";
-import { DEMO_FEE_TXS } from "@/lib/demo-finance";
 import { summarizeBuyback, type BuybackData } from "@/lib/buyback";
 
 /** Public treasury snapshot from /api/wallets (addresses, balances, fee ledger). */
@@ -162,8 +160,8 @@ export default function TreasuryPage() {
    * The buyback is paid out of this wallet too, so the ledger's `buy` legs are
    * appended as outflows: without them the table implies 100% of the fees are
    * still sitting here. Burn legs move tokens only (no SOL), so they stay in
-   * the Buyback & burn table. Sample rows appear only when nothing at all has
-   * been recorded — never mixed in with real fee or buyback rows.
+   * the Buyback & burn table. No sample rows: an empty table plus one honest
+   * sentence is the only way this list stays trustworthy.
    */
   const feeTxs = useMemo(() => {
     const rows: TxRow[] = ledger
@@ -190,12 +188,13 @@ export default function TreasuryPage() {
   }, [ledger, buyback]);
 
   /**
-   * Sample fee rows only when there is genuinely nothing to show AND the draw
-   * ledger was readable: a failed fetch must not masquerade as "no fees yet",
-   * and demo rows must never sit in a half-loaded table.
+   * Fee rows are the real ledger, full stop. There used to be a `DEMO_FEE_TXS`
+   * fallback with a "Sample" chip for the case "no draw has paid a fee yet" —
+   * removed before launch: fake fee income on a public treasury page reads as
+   * real revenue, and a chip is not enough of a disclaimer. An empty table with
+   * one honest sentence is better than three invented rows.
    */
-  const feeSample = !roundsError && !feeTxs.live && feeTxs.draws === 0;
-  const feeRows = feeTxs.live ? feeTxs.rows : feeSample ? DEMO_FEE_TXS : [];
+  const feeRows = feeTxs.rows;
 
 
   return (
@@ -292,11 +291,10 @@ export default function TreasuryPage() {
                 }
                 txAria="Fee wallet activity, fees earned and buyback spends"
                 txs={feeRows}
-                txSample={feeSample}
                 txEmptyNote={
-                  roundsError && !feeTxs.live
+                  roundsError
                     ? "Fee history couldn’t be loaded."
-                    : "No fee sweep or buyback spend recorded yet."
+                    : "No fees recorded yet — the first completed draw settles one."
                 }
               />
             </div>
@@ -341,7 +339,6 @@ function WalletCard({
   emptyNote,
   txAria,
   txs,
-  txSample = false,
   txEmptyNote,
 }: {
   label: string;
@@ -352,7 +349,6 @@ function WalletCard({
   emptyNote: string;
   txAria: string;
   txs: TxRow[];
-  txSample?: boolean;
   txEmptyNote: string;
 }) {
   return (
@@ -360,11 +356,6 @@ function WalletCard({
       <div className="flex flex-col gap-3 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-sm font-semibold tracking-tight">{label}</h2>
-          {txSample && txs.length > 0 && (
-            <Chip size="sm" variant="soft" color="warning">
-              Sample
-            </Chip>
-          )}
         </div>
 
         <div className="flex flex-col">
@@ -443,9 +434,8 @@ function TxLink({
  * for screen readers and only `PAGE_SIZE` rows render at a time, so a long
  * ledger can’t stretch the card.
  *
- * The `Sample` chip for `DEMO_FEE_TXS` is deliberately NOT here: it lives in the
- * wallet header (right of the title) so the placeholder rows are flagged before
- * the reader starts parsing the table.
+ * There is no sample/placeholder chip any more: both ledger tables only ever show
+ * rows derived from the draw ledger (fee sweeps) or the hand-kept buyback file.
  *
  * Body type is Geist Sans, same 12px as the buyback ledger below (`.table-compact`
  * handles the size for both). These cells are labels, dates and SOL amounts — no
