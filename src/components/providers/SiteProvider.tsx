@@ -16,6 +16,8 @@ export type SiteBrand = {
   social: { x: string; telegram: string };
   /** Token ticker (e.g. "PAY") — one admin setting, read by every page. */
   tokenName: string;
+  /** Versioned favicon URL injected from the admin upload; "" when unset. */
+  faviconUrl: string;
   siteTitle: string;
   description: string;
 };
@@ -24,6 +26,7 @@ const FALLBACK: SiteBrand = {
   brandName: "Pay",
   social: { x: "", telegram: "" },
   tokenName: "PAY",
+  faviconUrl: "",
   siteTitle: "PAY Token Lottery",
   description:
     "A verifiable holder lottery for the PAY token on Solana, powered by drand randomness.",

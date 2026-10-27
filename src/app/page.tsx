@@ -12,7 +12,7 @@ import { BrandMark } from "@/components/BrandMark";
 import { INFORMATION, NAV, isNavActive } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 import { nextCronOccurrence } from "@/lib/cron-next";
-import { fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
+import { explorerUrl, fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
 
 /* ──────────────────────────────────────────────────────────────────────────
    Live data. The homepage fetches /api/status (current prize pool, eligible
@@ -191,6 +191,116 @@ const rankBar = (rank: number): string => {
       return "bg-accent";
   }
 };
+
+/**
+ * Contract address strip under the hero card. The token mark comes from the
+ * uploaded favicon (Admin → SEO, versioned URL) with `/logo.svg` as the
+ * fallback, the mint itself is set in a real monospace stack (the project's
+ * `font-mono` is an inert alias of Geist Sans since the mono cut was removed, so
+ * this is a deliberate one-off for a code value), and the row copies on click
+ * with an inline "Copied" confirmation plus an explorer arrow.
+ */
+function ContractAddress({
+  address,
+  net,
+  loading,
+}: {
+  address: string | null;
+  net: "mainnet" | "devnet";
+  loading: boolean;
+}) {
+  const { faviconUrl } = useSite();
+  const [copied, setCopied] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const id = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(id);
+  }, [copied]);
+
+  /** The address is a code value: slot it into a mono stack instead of Geist. */
+  const codeStyle: React.CSSProperties = {
+    fontFamily:
+      "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
+    letterSpacing: "0.01em",
+  };
+
+  if (loading) {
+    // Reserve the row's exact height while /api/status is in flight, so the
+    // strip below doesn't jump when the address lands.
+    return (
+      <div className="mt-3 flex items-center gap-2 rounded-lg border border-(--border) bg-surface px-2.5 py-1.5">
+        <Skeleton className="size-4 rounded-[4px]" />
+        <Skeleton className="h-4 flex-1" />
+      </div>
+    );
+  }
+
+  if (!address) return null;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+    } catch {
+      /* clipboard blocked (insecure context) — the address stays selectable */
+    }
+  };
+
+  return (
+    <div className="mt-3 flex items-center gap-2 rounded-lg border border-(--border) bg-surface px-2.5 py-1.5">
+      {logoFailed ? (
+        <span
+          aria-hidden="true"
+          className="grid size-4 shrink-0 place-items-center rounded-[4px] bg-accent/10 text-[8px] font-semibold text-accent"
+        >
+          D
+        </span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={faviconUrl || "/logo.svg"}
+          alt=""
+          aria-hidden="true"
+          onError={() => setLogoFailed(true)}
+          className="size-4 shrink-0 rounded-[4px] object-contain"
+        />
+      )}
+      <button
+        type="button"
+        onClick={copy}
+        title={`${address} — click to copy`}
+        className="group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-default/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+      >
+        <span
+          className="min-w-0 truncate rounded-md bg-default/60 px-2 py-1 text-[11px] leading-none text-foreground"
+          style={codeStyle}
+        >
+          {address}
+        </span>
+        <span
+          aria-live="polite"
+          className={`shrink-0 text-[10px] uppercase tracking-wider ${
+            copied ? "text-success" : "text-muted group-hover:text-foreground"
+          }`}
+        >
+          {copied ? "Copied" : "Copy"}
+        </span>
+      </button>
+      <a
+        href={explorerUrl(address, "address", net)}
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Open the token on Solscan"
+        title="Open on Solscan"
+        className="-mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-default/40 hover:text-foreground"
+      >
+        <Icon name="arrow-up-right" className="h-3.5 w-3.5" />
+      </a>
+    </div>
+  );
+}
 
 /** 1 → "1st", 2 → "2nd", 3 → "3rd", 11 → "11th". */
 const ordinal = (n: number): string => {
@@ -772,6 +882,16 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {/* Contract address — one quiet row directly under the hero card.
+              Caught by the eye (accent CA tag, mono address) but it stays a
+              single line: copy on click, explorer arrow on the right. Hidden
+              entirely when no mint is configured. */}
+          <ContractAddress
+            address={status?.tokenMint ?? null}
+            net={network}
+            loading={loading}
+          />
         </section>
 
         {/* Live strip — the three numbers that used to sit inside the hero card

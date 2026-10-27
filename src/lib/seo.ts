@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { createHash } from "node:crypto";
 import { prisma } from "./prisma";
 
 /**
@@ -196,6 +197,18 @@ export interface ParsedFavicon {
 
 const FAVICON_DATA_URI_RE =
   /^data:(image\/(?:png|x-icon|vnd\.microsoft\.icon|svg\+xml|webp))((?:;charset=[A-Za-z0-9._-]+)?);base64,([A-Za-z0-9+/]+={0,2})$/;
+
+/**
+ * Cache-busted URL for the uploaded favicon (`/api/favicon?v=<hash>`), or ""
+ * when the stored value is not a valid icon. Browsers keep favicons in a cache
+ * that ignores HTTP caching, so the URL itself has to change per upload — one
+ * helper so the metadata tags and the client provider can never disagree.
+ */
+export function faviconUrl(value: string): string {
+  if (!parseFavicon(value)) return "";
+  const hash = createHash("sha1").update(value).digest("hex").slice(0, 10);
+  return `/api/favicon?v=${hash}`;
+}
 
 /**
  * Decode the stored favicon data URI. Returns `null` for an empty, malformed,
