@@ -12,7 +12,13 @@ import { BrandMark } from "@/components/BrandMark";
 import { INFORMATION, NAV, isNavActive } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 import { nextCronOccurrence } from "@/lib/cron-next";
-import { explorerUrl, fmtSolHuman, fmtSolNum, timeAgo } from "@/lib/format";
+import {
+  explorerUrl,
+  fmtSolHuman,
+  fmtSolNum,
+  SOL_BALANCE_DIGITS,
+  timeAgo,
+} from "@/lib/format";
 
 /* ──────────────────────────────────────────────────────────────────────────
    Live data. The homepage fetches /api/status (current prize pool, eligible
@@ -88,6 +94,15 @@ type RoundsResp = {
   chain: Chain | null;
   rounds: Round[];
   dbError: string | null;
+};
+
+/** Slice of /api/creator-fees used by the prize-pool footer. */
+type FeesResp = {
+  claimableSol: number | null;
+  autoEnabled: boolean;
+  autoMinSol: number | null;
+  lastClaimed: { at: string; amountSol: number; source: string } | null;
+  error: string | null;
 };
 
 /**
@@ -454,6 +469,8 @@ export default function Home() {
   // on an em dash instead of a skeleton that never resolves.
   const [stats, setStats] = useState<StatsTotals | null>(null);
   const [statsLoaded, setStatsLoaded] = useState(false);
+  // Creator-fee pot (claimable on pump.fun + last sweep) for the pool tile.
+  const [fees, setFees] = useState<FeesResp | null>(null);
   const [loading, setLoading] = useState(true);
   // 1s ticker so the "next draw" countdown in the hero updates live.
   const [now, setNow] = useState(() => Date.now());
@@ -490,6 +507,26 @@ export default function Home() {
         /* leave null — the hero stats fall back to an em dash */
       } finally {
         if (!cancelled) setStatsLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Creator-fee pot — separate endpoint because building it costs a pumpdev.io
+  // round-trip (cached 60 s server-side). Failure leaves nulls, so the tile shows
+  // an em dash instead of a fake zero.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/creator-fees", { cache: "no-store" }).then((x) =>
+          x.json()
+        );
+        if (!cancelled) setFees(r as FeesResp);
+      } catch {
+        /* leave null — the footer falls back to an em dash */
       }
     })();
     return () => {
@@ -956,44 +993,48 @@ export default function Home() {
                   <PrizePoolArt className="relative h-full w-full drop-shadow-[0_4px_12px_rgba(0,0,0,0.22)]" />
                 </span>
               </div>
-              {/* Two live facts that were nowhere else in the fold: the
-                  eligibility threshold (before this it only existed in a
-                  tooltip on the split tile and on /eligibility) and the age of
-                  the holder snapshot behind every eligible count on the page.
-                  They replace the old `Winners · split · 1st prize` row, which
-                  only repeated this tile's own description and the Prize split
-                  tile's rows. */}
+              {/* Creator-fee pot: how much is still sitting on pump.fun and when
+                  the last sweep landed. Replaces the Min hold / Updated pair —
+                  "100% of creator fees go to the pool" is only convincing if the
+                  money can be seen moving. Min hold still lives in the split
+                  tile's eligibility tooltip and on /eligibility. */}
               <div className="relative mt-5 grid grid-cols-2 gap-3 border-t border-(--border) pt-4">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted">Min hold</span>
+                  <span className="text-xs text-muted">Unclaimed fees</span>
                   {loading ? (
-                    <Skeleton className="h-4 w-14" />
+                    <Skeleton className="h-4 w-20" />
                   ) : (
                     <span
                       className="flex flex-wrap items-baseline gap-x-1.5"
                       title={
-                        status?.minTokenEligibleHuman
-                          ? `Wallets holding at least ${minEligibleHuman} ${tokenName} qualify for the draw.`
-                          : undefined
+                        fees?.autoEnabled
+                          ? `Creator fees still on pump.fun — swept into the prize pool automatically once the pot clears ${fmtSolHuman(fees.autoMinSol ?? 0)} SOL.`
+                          : "Creator fees still on pump.fun — auto-claim is off, they stay there until claimed."
                       }
                     >
                       <span className="font-mono text-sm font-semibold tabular-nums">
-                        {minEligibleHuman}
+                        {fees?.claimableSol != null
+                          ? fmtSolNum(fees.claimableSol, SOL_BALANCE_DIGITS)
+                          : "—"}
                       </span>
-                      <span className="text-xs text-muted">{tokenName}</span>
+                      <span className="text-xs text-muted">SOL</span>
                     </span>
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted">Updated</span>
+                  <span className="text-xs text-muted">Last claimed</span>
                   {loading ? (
                     <Skeleton className="h-4 w-20" />
                   ) : (
                     <span
                       className="font-mono text-sm font-normal tabular-nums"
-                      title="Age of the holder snapshot the eligible count is computed from."
+                      title={
+                        fees?.lastClaimed
+                          ? `${fmtSolHuman(fees.lastClaimed.amountSol)} SOL swept ${fees.lastClaimed.source === "auto" ? "automatically" : "manually"}.`
+                          : "No creator-fee sweep recorded yet."
+                      }
                     >
-                      {status?.lastSyncAt ? timeAgo(status.lastSyncAt) : "—"}
+                      {fees?.lastClaimed ? timeAgo(fees.lastClaimed.at) : "—"}
                     </span>
                   )}
                 </div>
