@@ -510,7 +510,7 @@ export default function HowItWorksFlow({
       {/* ===================== Desktop ===================== */}
       <div
         className="relative hidden min-h-[390px] lg:block"
-        aria-label={`Pump.fun creator fee flows through the ${brandName} engine and drand to the winners`}
+        aria-label={`Bags.fm creator fee flows through the ${brandName} engine and drand to the winners`}
       >
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full"
@@ -542,7 +542,7 @@ export default function HowItWorksFlow({
           <Node
             icon={<Zap size={18} />}
             image={ART.pumpfun}
-            title="Pump.fun trading"
+            title="Bags.fm trading"
             active={pumping}
             subtitle={pumping ? <FeeCharge active /> : "creator fees"}
             badgeClassName="bg-success/10 text-success ring-1 ring-inset ring-success/20"
@@ -587,7 +587,7 @@ export default function HowItWorksFlow({
       {/* ===================== Mobile ===================== */}
       <div
         className="flex flex-col gap-2 lg:hidden"
-        aria-label={`Pump.fun creator fee flows through the ${brandName} engine and drand to the winners`}
+        aria-label={`Bags.fm creator fee flows through the ${brandName} engine and drand to the winners`}
       >
         {/* Phones keep the flow as a centred column of capped cards, but each
             card is left-aligned exactly like the desktop tile (badge left, copy
@@ -600,7 +600,7 @@ export default function HowItWorksFlow({
           <Node
             icon={<Zap size={18} />}
             image={ART.pumpfun}
-            title="Pump.fun trading"
+            title="Bags.fm trading"
             active={pumping}
             subtitle={pumping ? <FeeCharge active /> : "creator fees"}
             badgeClassName="bg-success/10 text-success ring-1 ring-inset ring-success/20"
