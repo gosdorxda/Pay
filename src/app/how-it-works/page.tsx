@@ -31,7 +31,7 @@ export default function HowItWorksPage() {
           <Typography type="h4">How draws work</Typography>
           <Typography type="body-sm" color="muted" className="mt-1.5">
             Hold at least the minimum {tokenName} and you are on the list for every draw, with
-            no tickets and no sign-up. Creator fees from Pump.fun trading fill the prize pool,
+            no tickets and no sign-up. Creator fees from Bags.fm trading fill the prize pool,
             and the winners are picked by drand, a public randomness beacon run by independent
             organisations. Anyone can check a finished draw in their own browser.
           </Typography>
@@ -132,7 +132,7 @@ export default function HowItWorksPage() {
         {/* Payouts */}
         <Section title="Where the money goes">
           <p className="text-sm text-muted leading-relaxed">
-            The pool is the SOL in the project wallet, mostly creator fees that Pump.fun pays on{" "}
+            The pool is the SOL in the project wallet, mostly creator fees that Bags.fm pays on{" "}
             {tokenName} trading. A small reserve (about 0.05&nbsp;SOL) stays behind for network
             fees, and by default everything above it is paid out. If the pool is at or below
             that reserve, or below a minimum prize when one is set, the draw is skipped instead

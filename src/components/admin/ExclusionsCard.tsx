@@ -26,7 +26,7 @@ import { ExternalLink, SkeletonRows } from "@/components/ui";
  * Wallets here are removed from the eligible pool BEFORE the drand-seeded
  * shuffle, so the beacon can never pick them — they are not "skipped by
  * randomness", they were never candidates. Intended for accounts that hold the
- * token but aren't players: the pump.fun bonding curve, AMM/LP pool
+ * token but aren't players: the bonding curve (pump.fun or the bags.fm/Meteora curve), AMM/LP pool
  * authorities, program vaults, treasury wallets.
  *
  * The list is snapshotted on every round (`LotteryRound.excludedAddresses`), so
@@ -194,7 +194,7 @@ export function ExclusionsCard({ network }: { network: string }) {
             Excluded wallets still hold the token but never enter the draw — the
             filter runs <span className="text-foreground">before</span> the drand
             shuffle, so the beacon can never select them. Use it for accounts
-            that aren&apos;t players: the pump.fun bonding curve, AMM/LP pool
+            that aren&apos;t players: the bonding curve (pump.fun or the bags.fm/Meteora curve), AMM/LP pool
             authorities, program vaults or a treasury. The platform wallet is
             always excluded and doesn&apos;t need to be listed. Each round
             snapshots the list it used, so adding an address today doesn&apos;t
@@ -422,7 +422,7 @@ export function ExclusionsCard({ network }: { network: string }) {
           <p className="text-sm text-muted leading-relaxed">
             Current holders whose address is{" "}
             <span className="text-foreground">off the ed25519 curve</span> — that
-            is what a program-derived account looks like (the pump.fun bonding
+            is what a program-derived account looks like (a bonding
             curve, a pool authority, a vault). Nothing is excluded
             automatically: review each one and exclude the ones that aren&apos;t
             players. The curve and pool authority for this token are already

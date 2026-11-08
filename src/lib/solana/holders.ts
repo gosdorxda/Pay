@@ -1,5 +1,5 @@
 import { Connection, PublicKey } from "@solana/web3.js";
-import { getConfig } from "../config";
+import { getConfig, type LotteryConfig } from "../config";
 import { getConnection } from "./connection";
 
 /** Standard SPL Token program id (pump.fun tokens live here). */
@@ -27,15 +27,167 @@ export interface Holder {
  *
  * The token program is resolved DYNAMICALLY from the mint account's owner
  * (standard SPL Token vs Token-2022 vs other). This is essential because
- * pump.fun tokens are Token-2022, whose token accounts carry extensions and are
- * NOT a fixed 165 bytes — a hard `dataSize: 165` filter silently drops every
- * one of them and you get "0 holders".
+ * pump.fun/bags.fm tokens are Token-2022, whose token accounts carry extensions
+ * and are NOT a fixed 165 bytes — a hard `dataSize: 165` filter silently drops
+ * every one of them and you get "0 holders".
  *
  * Uses `jsonParsed` encoding with only a mint `memcmp` filter (no dataSize), so
  * accounts of any size are returned and the RPC decodes owner + amount itself.
  */
-async function fetchHolders(): Promise<Holder[]> {
-  const cfg = getConfig();
+
+/** Hard cap per V2 page — the RPC rejects anything above 10,000 ("Pagination
+ *  limit too large. max allowed is 10000"). 1,000 keeps each response small. */
+const PAGE_LIMIT = 1_000;
+/** Safety net against a misbehaving RPC that never returns a null key. */
+const MAX_PAGES = 500;
+const FETCH_TIMEOUT_MS = 30_000;
+
+/** One token account, as decoded from either RPC method. */
+type RawTokenAccount = {
+  pubkey: string;
+  owner: string;
+  amount: string;
+};
+
+/** Shape of a `getProgramAccountsV2` JSON-RPC response (Helius extension). */
+type ProgramAccountsV2Response = {
+  result?: {
+    accounts?: Array<{ pubkey: string; account: { data: unknown } }>;
+    /** Cursor for the next page; null when the scan is complete. */
+    paginationKey?: string | null;
+    count?: number;
+  };
+  error?: { code?: number; message?: string };
+};
+
+/**
+ * Pulls the fields we care about out of a `jsonParsed` token-account payload.
+ * Returns null for accounts the RPC could not parse (or non-"account" types).
+ */
+function parseTokenAccount(
+  pubkey: string,
+  data: unknown
+): RawTokenAccount | null {
+  const parsed = (data as { parsed?: { type?: string; info?: unknown } })
+    ?.parsed;
+  if (!parsed || (parsed.type && parsed.type !== "account")) return null;
+  const info = parsed.info as
+    | {
+        owner?: string;
+        tokenAmount?: { amount?: string; decimals?: number };
+      }
+    | undefined;
+  const owner = info?.owner;
+  const amount = info?.tokenAmount?.amount;
+  if (!owner || amount === undefined) return null;
+  return { pubkey, owner, amount };
+}
+
+/**
+ * Fetches every token account of `mint` via Helius `getProgramAccountsV2`,
+ * which is cursor-paginated and therefore has no "too many accounts" ceiling.
+ *
+ * Pagination ends only when `paginationKey` is null — an empty page can still
+ * carry a key (verified against the live RPC), so the loop never stops early on
+ * a zero-length page. `commitment` is passed so the snapshot matches
+ * `getConnection()` ("confirmed").
+ *
+ * NOTE: balance/`amount` can NOT be filtered server-side — `memcmp` is an
+ * equality match on a byte prefix, so it cannot express "amount ≥ X" (an
+ * 8-byte LE pattern only matches that exact value). Zero-balance accounts are
+ * therefore skipped in Node after the fetch.
+ *
+ * Returns null when the RPC does not implement the method (code -32601) so the
+ * caller can fall back to the legacy one-shot query.
+ */
+async function fetchTokenAccountsV2(
+  rpcUrl: string,
+  program: PublicKey,
+  mint: PublicKey
+): Promise<RawTokenAccount[] | null> {
+  const filters = [{ memcmp: { offset: 0, bytes: mint.toBase58() } }];
+
+  const out: RawTokenAccount[] = [];
+  let paginationKey: string | null = null;
+  let pages = 0;
+
+  do {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      cache: "no-store",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "holders",
+        method: "getProgramAccountsV2",
+        params: [
+          program.toBase58(),
+          {
+            encoding: "jsonParsed",
+            commitment: "confirmed",
+            limit: PAGE_LIMIT,
+            filters,
+            ...(paginationKey ? { paginationKey } : {}),
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(
+        `getProgramAccountsV2 failed: HTTP ${res.status} ${res.statusText}`
+      );
+    }
+
+    const json = (await res.json()) as ProgramAccountsV2Response;
+    if (json.error) {
+      // Method not implemented / disabled on this RPC → caller falls back.
+      if (json.error.code === -32601) return null;
+      throw new Error(
+        `getProgramAccountsV2 failed: ${
+          json.error.message ?? "unknown RPC error"
+        }`
+      );
+    }
+
+    for (const a of json.result?.accounts ?? []) {
+      const parsed = parseTokenAccount(a.pubkey, a.account.data);
+      if (!parsed) continue;
+      out.push(parsed);
+    }
+
+    paginationKey = json.result?.paginationKey ?? null;
+    pages++;
+  } while (paginationKey && pages < MAX_PAGES);
+
+  return out;
+}
+
+/**
+ * Legacy, non-paginated fetch. Kept as a fallback for RPCs without
+ * `getProgramAccountsV2`; some providers reject it outright on busy token
+ * programs ("Too many accounts requested (Large number of pubkeys)").
+ */
+async function fetchTokenAccountsLegacy(
+  connection: Connection,
+  program: PublicKey,
+  mint: PublicKey
+): Promise<RawTokenAccount[]> {
+  const accounts = await connection.getParsedProgramAccounts(program, {
+    commitment: "confirmed",
+    filters: [{ memcmp: { offset: 0, bytes: mint.toBase58() } }],
+  });
+
+  const out: RawTokenAccount[] = [];
+  for (const a of accounts) {
+    const parsed = parseTokenAccount(a.pubkey.toBase58(), a.account.data);
+    if (!parsed) continue;
+    out.push(parsed);
+  }
+  return out;
+}
+
+async function fetchHolders(cfg: LotteryConfig): Promise<Holder[]> {
   const connection = getConnection();
   const mint = new PublicKey(cfg.tokenMint);
 
@@ -48,35 +200,27 @@ async function fetchHolders(): Promise<Holder[]> {
   }
   const tokenProgram = mintInfo.owner;
 
-  // getParsedProgramAccounts returns jsonParsed output (so Token-2022 accounts
-  // with variable-length extensions are decoded by the RPC itself) and accepts
-  // the same mint `memcmp` filter — no dataSize restriction.
-  const accounts = await connection.getParsedProgramAccounts(tokenProgram, {
-    filters: [{ memcmp: { offset: 0, bytes: mint.toBase58() } }],
-  });
+  // Preferred path: paginated getProgramAccountsV2 (no account-count ceiling).
+  // Falls back to the legacy one-shot query when the RPC lacks the method.
+  const raw = await fetchTokenAccountsV2(cfg.rpcUrl, tokenProgram, mint).catch(
+    (e) => {
+      console.warn(
+        `[holders] getProgramAccountsV2 unavailable: ${(e as Error).message}`
+      );
+      return null;
+    }
+  );
+
+  const accounts = raw ?? (await fetchTokenAccountsLegacy(connection, tokenProgram, mint));
 
   const holders: Holder[] = [];
   for (const a of accounts) {
-    const data = a.account.data as unknown as {
-      parsed?: {
-        type?: string;
-        info?: {
-          owner?: string;
-          tokenAmount?: { amount?: string; decimals?: number };
-        };
-      };
-    };
-    const parsed = data.parsed;
-    if (!parsed || parsed.type !== "account") continue;
-    const info = parsed.info;
-    if (!info?.owner || !info?.tokenAmount?.amount) continue;
-    const amount = info.tokenAmount.amount;
-    if (BigInt(amount) <= 0n) continue; // skip zero/closed accounts
+    if (BigInt(a.amount) <= 0n) continue; // skip zero/closed accounts
     holders.push({
-      owner: info.owner,
-      amount,
+      owner: a.owner,
+      amount: a.amount,
       decimals: cfg.tokenDecimals,
-      tokenAccount: a.pubkey.toBase58(),
+      tokenAccount: a.pubkey,
     });
   }
   return holders;
@@ -130,7 +274,7 @@ async function diagnoseMint(
   if (BigInt(supplyAmount) > 0n) {
     return {
       shouldThrow: true,
-      message: `0 holders even though ${mintAddr} (${progNote}) has supply ${supplyAmount} on ${net}. Your RPC is NOT returning token accounts via getProgramAccounts (common on free/public RPCs). Fix: use a Helius RPC with HELIUS_API_KEY set, or switch the fetch to Helius DAS getTokenAccounts.`,
+      message: `0 holders even though ${mintAddr} (${progNote}) has supply ${supplyAmount} on ${net}. Your RPC returned no token accounts via getProgramAccountsV2 (and the legacy getProgramAccounts fallback failed too). Fix: check SOLANA_RPC_URL points at a Helius endpoint whose plan allows getProgramAccountsV2, then re-run the sync.`,
     };
   }
   return {
@@ -142,15 +286,13 @@ async function diagnoseMint(
 /**
  * Snapshots every non-zero holder of the configured Pay token mint.
  *
- * Uses `getProgramAccounts` (jsonParsed) on the RPC, querying whichever token
- * program owns the mint (resolved dynamically — standard Token OR Token-2022,
- * e.g. pump.fun tokens), filtered by mint only (no fixed account-size filter,
- * since Token-2022 accounts carry variable-length extensions). A wallet holding
- * the token across multiple accounts is merged into one entry with summed balance.
- *
- * Note: for tokens with an extremely large holder set (tens of thousands+),
- * this can be replaced with the paginated Helius DAS `getTokenAccounts` method
- * without changing the returned {@link Holder} shape.
+ * Uses the paginated `getProgramAccountsV2` (falling back to legacy
+ * `getProgramAccounts` when the RPC lacks it) on whichever token program owns
+ * the mint — resolved dynamically, so standard Token AND Token-2022 (pump.fun /
+ * bags.fm tokens) both work. Filtered by mint only: no fixed `dataSize`, because
+ * Token-2022 accounts carry variable-length extensions (a 165-byte filter drops
+ * every one of them and yields "0 holders"). A wallet holding the token across
+ * multiple accounts is merged into one entry with summed balance.
  */
 export async function snapshotHolders(): Promise<{
   holders: Holder[];
@@ -158,10 +300,9 @@ export async function snapshotHolders(): Promise<{
   fetchedAt: Date;
 }> {
   const cfg = getConfig();
-  // Single fetch: the token program is resolved dynamically from the mint's
-  // owner (handles standard Token AND Token-2022, incl. pump.fun tokens whose
-  // accounts carry extensions and are NOT a fixed 165 bytes).
-  const raw = await fetchHolders();
+  // The token program is resolved dynamically inside fetchHolders, so both
+  // Token and Token-2022 (extension-carrying) accounts are covered.
+  const raw = await fetchHolders(cfg);
 
   // 0 holders despite a valid mint — diagnose WHY (RPC not returning accounts,
   // wrong network, etc.) instead of an opaque "0 holders".

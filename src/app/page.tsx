@@ -1378,7 +1378,7 @@ export default function Home() {
                 collapsed row already carries #N, the pool, the age and the
                 winner avatars, so this line only explains the affordance. */}
             <Typography type="body-sm" color="muted">
-              Each row follows one draw from the Pump.fun creator fee to the wallets
+              Each row follows one draw from the Bags.fm creator fee to the wallets
               that got paid. Open one to see the receipts.
             </Typography>
           </div>

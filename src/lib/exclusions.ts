@@ -1,14 +1,16 @@
 import { PublicKey } from "@solana/web3.js";
+import { getConfig } from "./config";
 import { prisma } from "./prisma";
 
 /**
  * Draw exclusion list ("blacklist") — server-only.
  *
- * Some accounts hold the token on-chain but are NOT players: the pump.fun
- * bonding curve, AMM/LP pool authorities, program vaults, treasury wallets.
- * Paying a prize into one of those would burn the SOL into a curve that nobody
- * controls (or hand it straight back to liquidity), so they must never be
- * counted as eligible — let alone drawn.
+ * Some accounts hold the token on-chain but are NOT players: the bonding curve
+ * (pump.fun OR the bags.fm Meteora DBC curve), AMM/LP pool authorities and
+ * vaults, program vaults, treasury wallets. Paying a prize into one of those
+ * would burn the SOL into a curve that nobody controls (or hand it straight
+ * back to liquidity), so they must never be counted as eligible — let alone
+ * drawn.
  *
  * How it composes with the draw (important for the fairness story):
  *   eligible pool  =  snapshot wallets  −  platform wallet  −  this list
@@ -19,6 +21,16 @@ import { prisma } from "./prisma";
  * randomness" — it was never a candidate. The exact list used is snapshotted on
  * `LotteryRound.excludedAddresses` so historical rounds stay reproducible after
  * an admin edits the blacklist later.
+ *
+ * Two venue stacks are supported (the deployment moved from pump.fun to
+ * bags.fm, which launches via Meteora's Dynamic Bonding Curve and graduates to
+ * Meteora DAMM v2):
+ *   • pump.fun legacy: `bonding-curve` PDA on 6EF8…F6P + PumpSwap pool
+ *     authority PDA — pure derivations from TOKEN_MINT (sync).
+ *   • bags.fm: the DBC VirtualPool / DAMM v2 Pool hold the token in VAULT
+ *     accounts that can NOT be derived from the mint alone, so they are looked
+ *     up ON-CHAIN (paginated getProgramAccountsV2, cached) and added to the
+ *     exclusion set by `getDrawExclusions` (async — every caller already is).
  */
 
 export interface ExcludedWalletRow {
@@ -35,11 +47,26 @@ export const MAX_EXCLUSION_LABEL = 80;
  * Venue programs whose per-mint accounts hold the token but are never players.
  * The addresses are DERIVED from TOKEN_MINT, so they follow the token through
  * graduation (curve → AMM pool) with no admin action and can't be forgotten.
+ *
+ * Legacy pump.fun stack …
  */
 const PUMP_FUN_CURVE_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const PUMP_SWAP_PROGRAM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 
-export type VenueKind = "bonding-curve" | "pool-authority";
+/** … and the bags.fm stack (Meteora programs, per docs.bags.fm/principles/program-ids). */
+const METEORA_DBC_PROGRAM = "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN";
+const METEORA_DAMM_V2_PROGRAM = "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG";
+
+/** Field offsets inside Meteora's account layouts (from the bags-sdk IDLs). */
+const DBC_BASE_MINT_OFFSET = 72; // VirtualPool.base_mint
+const DBC_BASE_VAULT_OFFSET = 104; // VirtualPool.base_vault
+const DBC_QUOTE_VAULT_OFFSET = 136; // VirtualPool.quote_vault
+const DAMM_TOKEN_A_MINT_OFFSET = 8; // Pool.token_a_mint
+const DAMM_TOKEN_B_MINT_OFFSET = 40; // Pool.token_b_mint
+const DAMM_TOKEN_A_VAULT_OFFSET = 72; // Pool.token_a_vault
+const DAMM_TOKEN_B_VAULT_OFFSET = 104; // Pool.token_b_vault
+
+export type VenueKind = "bonding-curve" | "pool-authority" | "venue-vault";
 
 export interface VenueAccount {
   address: string;
@@ -52,7 +79,7 @@ export interface VenueAccount {
   reason: string;
 }
 
-/** The bonding curve + PumpSwap pool authority for the configured mint. */
+/** The bonding curve + AMM authorities for the configured mint. */
 export function getVenueAccounts(
   mint = process.env.TOKEN_MINT
 ): VenueAccount[] {
@@ -61,14 +88,14 @@ export function getVenueAccounts(
     const mintKey = new PublicKey(mint);
     const derive = (
       programId: string,
-      seed: string,
+      seeds: (string | Buffer)[],
       kind: VenueKind,
       tag: string,
       label: string,
       reason: string
     ): VenueAccount => ({
       address: PublicKey.findProgramAddressSync(
-        [Buffer.from(seed), mintKey.toBuffer()],
+        seeds.map((s) => (typeof s === "string" ? Buffer.from(s) : s)),
         new PublicKey(programId)
       )[0].toBase58(),
       kind,
@@ -77,9 +104,11 @@ export function getVenueAccounts(
       reason,
     });
     return [
+      // ---- pump.fun (legacy stack — kept harmless: if the mint was not
+      // launched there, these PDAs simply never hold the token) ----
       derive(
         PUMP_FUN_CURVE_PROGRAM,
-        "bonding-curve",
+        ["bonding-curve", mintKey.toBuffer()],
         "bonding-curve",
         "bonding curve",
         "pump.fun bonding curve",
@@ -87,11 +116,23 @@ export function getVenueAccounts(
       ),
       derive(
         PUMP_SWAP_PROGRAM,
-        "pool-authority",
+        ["pool-authority", mintKey.toBuffer()],
         "pool-authority",
         "pool authority",
         "PumpSwap pool authority",
         "The PumpSwap pool authority holds the token as AMM liquidity — it is not a player, and a prize sent here would just flow back into the pool."
+      ),
+      // ---- bags.fm (Meteora stack) ----
+      // `pool_authority` is a GLOBAL PDA (no mint seed), so it covers every
+      // delegated DAMM v2 pool. The per-pool token vaults are discovered
+      // on-chain — see `getVenueExclusionAddresses`.
+      derive(
+        METEORA_DAMM_V2_PROGRAM,
+        ["pool_authority"],
+        "pool-authority",
+        "pool authority",
+        "Meteora DAMM v2 pool authority",
+        "The DAMM v2 pool authority signs every swap of a graduated bags.fm pool — it is not a player, and a prize sent here would just flow back into the pool."
       ),
     ];
   } catch {
@@ -106,6 +147,151 @@ export function getVenueAccountMap(
 ): Map<string, VenueAccount> {
   return new Map(getVenueAccounts(mint).map((v) => [v.address, v]));
 }
+
+/** Venue accounts discovered on-chain: label for the admin/holder chip. */
+function venueVaultAccount(address: string): VenueAccount {
+  return {
+    address,
+    kind: "venue-vault",
+    tag: "venue vault",
+    label: "bags.fm liquidity vault",
+    reason:
+      "This vault belongs to the bags.fm bonding curve / AMM pool and holds the token as liquidity — it is not a player, and a prize sent here would be locked in the pool.",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* On-chain venue discovery (bags.fm / Meteora DBC + DAMM v2)          */
+/* ------------------------------------------------------------------ */
+
+type CachedVenues = { addresses: string[]; fetchedAt: number };
+const venueCache = new Map<string, CachedVenues>();
+const VENUE_CACHE_MS = 5 * 60_000;
+const VENUE_FETCH_TIMEOUT_MS = 20_000;
+const VENUE_PAGE_LIMIT = 1_000;
+const VENUE_MAX_PAGES = 200;
+
+async function rpcV2Paginated(
+  rpcUrl: string,
+  program: string,
+  filters: unknown[]
+): Promise<Array<{ pubkey: string; data: Buffer }>> {
+  const out: Array<{ pubkey: string; data: Buffer }> = [];
+  let paginationKey: string | null = null;
+  let pages = 0;
+  do {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      cache: "no-store",
+      signal: AbortSignal.timeout(VENUE_FETCH_TIMEOUT_MS),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "exclusions",
+        method: "getProgramAccountsV2",
+        params: [
+          program,
+          {
+            encoding: "base64",
+            commitment: "confirmed",
+            limit: VENUE_PAGE_LIMIT,
+            filters,
+            ...(paginationKey ? { paginationKey } : {}),
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`getProgramAccountsV2: HTTP ${res.status}`);
+    }
+    const json = (await res.json()) as {
+      result?: {
+        accounts?: Array<{ pubkey: string; account: { data: [string, string] } }>;
+        paginationKey?: string | null;
+      };
+      error?: { message?: string };
+    };
+    if (json.error) throw new Error(json.error.message ?? "RPC error");
+    for (const a of json.result?.accounts ?? []) {
+      out.push({ pubkey: a.pubkey, data: Buffer.from(a.account.data[0], "base64") });
+    }
+    paginationKey = json.result?.paginationKey ?? null;
+    pages++;
+  } while (paginationKey && pages < VENUE_MAX_PAGES);
+  return out;
+}
+
+function cut32(data: Buffer, offset: number): string {
+  return new PublicKey(data.subarray(offset, offset + 32)).toBase58();
+}
+
+/**
+ * Every on-chain account that holds this mint for a venue (never a player):
+ * the bags.fm Meteora DBC base+quote vaults of the curve pool, and the DAMM v2
+ * token vaults of any graduated pool. Paginated V2 scans only — Helius rejects
+ * legacy `getProgramAccounts` on these busy programs.
+ *
+ * Cached in-process for 5 minutes (a venue only changes on graduation).
+ * Never throws: on any failure the draw proceeds with the derivable venues
+ * only, and the failure is logged.
+ */
+export async function getVenueExclusionAddresses(
+  mint = process.env.TOKEN_MINT
+): Promise<{ addresses: string[]; accounts: VenueAccount[]; error?: string }> {
+  if (!mint) return { addresses: [], accounts: [] };
+
+  const cached = venueCache.get(mint);
+  if (cached && Date.now() - cached.fetchedAt < VENUE_CACHE_MS) {
+    return { addresses: cached.addresses, accounts: cached.addresses.map((a) => venueVaultAccount(a)) };
+  }
+
+  const found: string[] = [];
+  let error: string | undefined;
+  const t0 = Date.now();
+
+  try {
+    const cfg = getConfig();
+    const rpcUrl = cfg.rpcUrl;
+
+    // DBC VirtualPool (base_mint @72) → base_vault + quote_vault
+    const dbcPools = await rpcV2Paginated(rpcUrl, METEORA_DBC_PROGRAM, [
+      { memcmp: { offset: DBC_BASE_MINT_OFFSET, bytes: mint } },
+    ]);
+    for (const { data } of dbcPools) {
+      if (data.length > DBC_QUOTE_VAULT_OFFSET + 32) {
+        found.push(cut32(data, DBC_BASE_VAULT_OFFSET));
+        found.push(cut32(data, DBC_QUOTE_VAULT_OFFSET));
+      }
+    }
+
+    // DAMM v2 Pool (token_a @8, token_b @40) → both token vaults
+    const dammA = await rpcV2Paginated(rpcUrl, METEORA_DAMM_V2_PROGRAM, [
+      { memcmp: { offset: DAMM_TOKEN_A_MINT_OFFSET, bytes: mint } },
+    ]);
+    const dammB = await rpcV2Paginated(rpcUrl, METEORA_DAMM_V2_PROGRAM, [
+      { memcmp: { offset: DAMM_TOKEN_B_MINT_OFFSET, bytes: mint } },
+    ]);
+    for (const { data } of [...dammA, ...dammB]) {
+      if (data.length > DAMM_TOKEN_B_VAULT_OFFSET + 32) {
+        found.push(cut32(data, DAMM_TOKEN_A_VAULT_OFFSET));
+        found.push(cut32(data, DAMM_TOKEN_B_VAULT_OFFSET));
+      }
+    }
+  } catch (e) {
+    error = (e as Error).message;
+    console.warn(`[exclusions] venue lookup failed: ${error}`);
+  }
+
+  const addresses = [...new Set(found)].sort();
+  venueCache.set(mint, { addresses, fetchedAt: Date.now() });
+  if (process.env.NODE_ENV !== "production" || addresses.length) {
+    console.log(
+      `[exclusions] venue scan for ${mint.slice(0, 6)}…: ${addresses.length} vault(s) in ${Date.now() - t0}ms`
+    );
+  }
+  return { addresses, accounts: addresses.map((a) => venueVaultAccount(a)), error };
+}
+
 
 /**
  * WHY an address is excluded, for the UI chips:
@@ -131,17 +317,22 @@ export function describeExclusion(
 
 /**
  * THE complete exclusion set for the next draw: platform wallet + venue
- * accounts + the admin blacklist, deduped. Every surface that reports an
- * eligible count must use this (holders lists, /api/status, the engine) or the
- * reported count drifts from what the draw can actually pick.
+ * accounts (derivable PDAs AND the on-chain-discovered bags.fm/Meteora vaults)
+ * + the admin blacklist, deduped. Every surface that reports an eligible count
+ * must use this (holders lists, /api/status, the engine) or the reported count
+ * drifts from what the draw can actually pick.
  */
 export async function getDrawExclusions(
   platformAddress: string | null
 ): Promise<string[]> {
-  const blacklist = await getExcludedAddresses();
+  const [blacklist, venueVaults] = await Promise.all([
+    getExcludedAddresses(),
+    getVenueExclusionAddresses(),
+  ]);
   return mergeExclusions(
     platformAddress,
     getVenueAccounts().map((v) => v.address),
+    venueVaults.addresses,
     blacklist
   );
 }

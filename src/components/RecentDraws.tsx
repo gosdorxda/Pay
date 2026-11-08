@@ -244,7 +244,7 @@ function DrawRow({
             logo (and every icon after it) sideways. */}
         <span className="hidden flex-1 justify-center md:flex">
           <span className="flex w-[14rem] shrink-0 items-center gap-2">
-            <Step src="/flow/pumpfun.png" label="Creator fee from Pump.fun" />
+            <Step src="/flow/pumpfun.png" label="Creator fee from Bags.fm" />
             <ArrowRight size={12} className="text-muted/50" aria-hidden="true" />
             <Step src="/flow/pay.png" label="Shuffled by the Pay engine" />
             <ArrowRight size={12} className="text-muted/50" aria-hidden="true" />
