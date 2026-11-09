@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AppShellV1 } from "@/components/AppShellV1";
 import { AppShellV2 } from "@/components/AppShellV2";
+import { useSite } from "@/components/providers/SiteProvider";
 
 /**
  * Shell dispatcher — picks the UI version and renders the matching chrome.
@@ -25,11 +26,6 @@ export type UiVersion = "1" | "2";
 
 const STORAGE_KEY = "ui-version";
 
-/** Deploy-wide default from the environment (build-time inlined). */
-function envVersion(): UiVersion {
-  return process.env.NEXT_PUBLIC_UI_VERSION === "2" ? "2" : "1";
-}
-
 /** Read the per-browser override, if any. Safe on the server. */
 function storedVersion(): UiVersion | null {
   if (typeof window === "undefined") return null;
@@ -42,26 +38,27 @@ function storedVersion(): UiVersion | null {
 }
 
 /**
- * Current UI version. Starts from the env default so the first render matches
- * SSR, then applies the stored override in an effect.
+ * Current UI version.
+ *
+ * The base comes from the SERVER (`SiteProvider.uiVersion`, read from the
+ * `UI_VERSION` env at request time), so switching shells needs no rebuild — a
+ * `NEXT_PUBLIC_*` value would be frozen into the bundle at build time. A
+ * per-browser `localStorage["ui-version"]` still wins, which is handy for
+ * comparing both shells.
+ *
+ * The first client render always uses the server value, so hydration matches.
  */
 export function useUiVersion(): UiVersion {
-  const [version, setVersion] = useState<UiVersion>(() => envVersion());
+  const { uiVersion } = useSite();
+  const [version, setVersion] = useState<UiVersion>(uiVersion);
 
   useEffect(() => {
-    const stored = storedVersion();
-    if (stored && stored !== version) setVersion(stored);
-    // Only re-read when the tab regains focus, so another tab's choice lands
-    // without a full reload. Intentionally not depending on `version` (that
-    // would fight the setter).
-    const onFocus = () => {
-      const next = storedVersion();
-      if (next) setVersion(next);
-    };
+    setVersion(storedVersion() ?? uiVersion);
+    // Re-read when the tab regains focus so another tab's choice lands.
+    const onFocus = () => setVersion(storedVersion() ?? uiVersion);
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [uiVersion]);
 
   return version;
 }

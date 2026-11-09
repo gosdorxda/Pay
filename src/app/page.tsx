@@ -104,6 +104,8 @@ type FeesResp = {
   autoEnabled: boolean;
   autoMinSol: number | null;
   lastClaimed: { at: string; amountSol: number; source: string } | null;
+  /** Where the numbers came from (bags.fm API vs the legacy pump.fun feed). */
+  source: "bags" | "pump" | null;
   error: string | null;
 };
 
@@ -1026,9 +1028,11 @@ export default function Home() {
                     <span
                       className="flex flex-wrap items-baseline gap-x-1.5"
                       title={
-                        fees?.autoEnabled
-                          ? `Creator fees still on pump.fun — swept into the prize pool automatically once the pot clears ${fmtSolHuman(fees.autoMinSol ?? 0)} SOL.`
-                          : "Creator fees still on pump.fun — auto-claim is off, they stay there until claimed."
+                        fees?.source === "bags"
+                          ? "Creator fees still unclaimed on bags.fm — they are swept into the prize pool when claimed."
+                          : fees?.autoEnabled
+                            ? `Creator fees still on pump.fun — swept into the prize pool automatically once the pot clears ${fmtSolHuman(fees.autoMinSol ?? 0)} SOL.`
+                            : "Creator fees still on pump.fun — auto-claim is off, they stay there until claimed."
                       }
                     >
                       <span className="font-mono text-sm font-semibold tabular-nums">
@@ -1049,7 +1053,7 @@ export default function Home() {
                       className="font-mono text-sm font-normal tabular-nums"
                       title={
                         fees?.lastClaimed
-                          ? `${fmtSolHuman(fees.lastClaimed.amountSol)} SOL swept ${fees.lastClaimed.source === "auto" ? "automatically" : "manually"}.`
+                          ? `${fmtSolHuman(fees.lastClaimed.amountSol)} SOL swept ${fees.lastClaimed.source === "bags.fm" ? "on bags.fm" : fees.lastClaimed.source === "auto" ? "automatically" : "manually"}.`
                           : "No creator-fee sweep recorded yet."
                       }
                     >

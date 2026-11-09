@@ -9,6 +9,7 @@ import { getPaletteCss } from "@/lib/palette";
 import { getFontConfig, getFontCss } from "@/lib/font";
 import { getDefaultTheme } from "@/lib/theme";
 import { getHeroCopy, renderHeroText } from "@/lib/hero";
+import { getServerUiVersion } from "@/lib/ui-version";
 import { effectiveValue } from "@/lib/settings";
 
 /**
@@ -193,6 +194,7 @@ export default async function RootLayout({
                 accent: renderHeroText(hero.accent, heroVars),
                 body: renderHeroText(hero.body, heroVars),
               },
+              uiVersion: getServerUiVersion(),
             }}
           >
             {children}

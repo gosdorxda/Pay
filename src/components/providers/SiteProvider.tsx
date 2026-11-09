@@ -22,6 +22,12 @@ export type SiteBrand = {
   description: string;
   /** Homepage hero copy (Admin → Hero), already resolved with placeholders. */
   hero: { headline: string; accent: string; body: string };
+  /**
+   * Which UI shell to render ("1" sidebar, "2" floating nav). Resolved on the
+   * SERVER from env at request time (see `app/layout.tsx`), not inlined into
+   * the client bundle — so flipping it needs no rebuild.
+   */
+  uiVersion: "1" | "2";
 };
 
 const FALLBACK: SiteBrand = {
@@ -37,6 +43,7 @@ const FALLBACK: SiteBrand = {
     accent: "Win the pool.",
     body: "100% of creator fees go into the pool. Meet the minimum hold and you’re in. Each round, {winnerCount} holders are drawn at random and paid in SOL.",
   },
+  uiVersion: "1",
 };
 
 const SiteContext = createContext<SiteBrand>(FALLBACK);
