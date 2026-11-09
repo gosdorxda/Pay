@@ -9,6 +9,8 @@ import HowItWorksFlow from "@/components/HowItWorksFlow";
 import RecentDraws from "@/components/RecentDraws";
 import { CountUp, ExternalLink, Icon, ThemeToggle, Skeleton } from "@/components/ui";
 import { BrandMark } from "@/components/BrandMark";
+import { useUiVersion } from "@/components/AppShell";
+import { FloatingNav } from "@/components/FloatingNav";
 import { INFORMATION, NAV, isNavActive } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 import { nextCronOccurrence } from "@/lib/cron-next";
@@ -424,8 +426,12 @@ function PoolArt({ className = "" }: { className?: string }) {
 export default function Home() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // UI version: v1 renders the sidebar below, v2 swaps in the floating pill.
+  // Shared with AppShell so `/` and every other route always agree.
+  const uiVersion = useUiVersion();
+  const isV2 = uiVersion === "2";
   const pathname = usePathname();
-  const { brandName, tokenName, social } = useSite();
+  const { brandName, tokenName, social, hero } = useSite();
   // Sidebar social links are admin-editable (Admin → SEO); empty = hidden.
   const socialLinks = INFORMATION.map((item) => ({
     ...item,
@@ -660,7 +666,14 @@ export default function Home() {
   // Active state comes from `isNavActive` in nav.ts — the same helper AppShell
   // uses, so `/rounds/37` keeps "Draws" lit here too.
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className={`${isV2 ? "ui-v2 " : ""}min-h-screen bg-background text-foreground`}>
+      {/* UI v2: the floating pill replaces the whole v1 chrome (backdrop +
+          sidebar + sticky header). Everything below inside `!isV2` is the
+          untouched v1 layout. */}
+      {isV2 && <FloatingNav />}
+
+      {!isV2 && (
+        <>
       {/* Mobile backdrop — always mounted so it fades out instead of popping. */}
       <div
         className={`fixed inset-0 z-30 bg-black/55 transition-opacity duration-300 ease-out motion-reduce:transition-none lg:hidden ${
@@ -766,9 +779,13 @@ export default function Home() {
           </button>
         </div>
       </aside>
+        </>
+      )}
 
-      {/* Main column */}
-      <div className={`transition-[padding] duration-200 ${collapsed ? "lg:pl-[68px]" : "lg:pl-60"}`}>
+      {/* Main column — in v2 there is no sidebar, so the left inset and the
+          breadcrumb header both drop out and content runs full width. */}
+      <div className={isV2 ? "" : `transition-[padding] duration-200 ${collapsed ? "lg:pl-[68px]" : "lg:pl-60"}`}>
+        {!isV2 && (
         <header className="sticky top-0 z-20 border-b border-(--border) bg-surface/80 backdrop-blur">
           <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
             <button
@@ -791,13 +808,15 @@ export default function Home() {
             </div>
           </div>
         </header>
+        )}
 
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10">
         {/* Hero — pitch + all-time proof numbers + CTAs on one surface. Only
             lifetime totals live here (draws run, SOL paid); the live per-round
             numbers stay in the tile strip below, so the fold reads
-            headline → proof → status tiles → draws. */}
-        <section className="pt-5 pb-5 sm:pt-10 sm:pb-6">
+            headline → proof → status tiles → draws. Top padding in v2 is
+            trimmed by the `.ui-v2` rule in globals.css. */}
+        <section className="page-shell pt-5 pb-5 sm:pt-10 sm:pb-6">
           <div className="relative overflow-hidden rounded-lg border border-(--border) bg-surface">
             {/* Soft accent halo — token-based, so it adapts to light/dark. */}
             <div
@@ -807,11 +826,11 @@ export default function Home() {
             <div className="relative flex flex-col gap-5 p-4 sm:p-6">
               <div className="flex flex-col gap-2">
                 <h1 className="max-w-3xl text-balance text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-                  Hold {tokenName}. <span className="text-accent">Win the pool.</span>
+                  {hero.headline}{" "}
+                  <span className="text-accent">{hero.accent}</span>
                 </h1>
                 <Typography type="body-sm" color="muted" className="max-w-2xl text-pretty">
-                  100% of creator fees go into the pool. Meet the minimum hold and you’re in. Each
-                  round, {winnerCount} holders are drawn at random and paid in SOL.
+                  {hero.body}
                 </Typography>
               </div>
 

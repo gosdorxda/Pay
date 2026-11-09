@@ -71,7 +71,7 @@ export default function EligibilityPage() {
   return (
     <AppShell title="Eligibility">
 
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
+      <main className="page-shell mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
         <HoldersBrowser
           title="Eligibility"
           subtitle={`Hold at least the minimum ${tokenName} and you’re entered in every draw automatically, no claim, no sign-up. Check a wallet below or browse the holder list.`}

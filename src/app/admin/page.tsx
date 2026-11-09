@@ -34,6 +34,8 @@ import { useSite } from "@/components/providers/SiteProvider";
 import { Skeleton } from "@/components/ui";
 import { SeoPanel } from "@/components/admin/SeoPanel";
 import { PalettePanel } from "@/components/admin/PalettePanel";
+import { ThemePanel } from "@/components/admin/ThemePanel";
+import { HeroPanel } from "@/components/admin/HeroPanel";
 import { FontPanel } from "@/components/admin/FontPanel";
 import { BuybackPanel } from "@/components/admin/BuybackPanel";
 import { CreatorFeesCard } from "@/components/admin/CreatorFeesCard";
@@ -2001,10 +2003,16 @@ export default function AdminPage() {
             </div>
           </Tabs.Panel>
           <Tabs.Panel id="seo" className="pt-4">
-            <SeoPanel />
+            <div className="flex flex-col gap-4">
+              <HeroPanel />
+              <SeoPanel />
+            </div>
           </Tabs.Panel>
           <Tabs.Panel id="palette" className="pt-4">
-            <PalettePanel />
+            <div className="flex flex-col gap-4">
+              <ThemePanel />
+              <PalettePanel />
+            </div>
           </Tabs.Panel>
           <Tabs.Panel id="font" className="pt-4">
             <FontPanel />

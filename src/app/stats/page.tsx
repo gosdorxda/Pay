@@ -197,8 +197,8 @@ export default function StatsPage() {
 
   return (
     <AppShell title="Stats">
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12 flex flex-col gap-6">
-        <div className="max-w-3xl">
+      <main className="page-shell mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12 flex flex-col gap-6">
+        <div className="page-intro max-w-3xl">
           <Typography type="h4">Draw statistics</Typography>
           <Typography type="body-sm" color="muted" className="mt-1.5">
             Every completed draw, added up: how much SOL reached winners, how many wallets were

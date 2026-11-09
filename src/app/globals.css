@@ -327,6 +327,55 @@ section[id] {
   }
 }
 
+/* UI v2 mobile menu — one simple fade/slide for the whole sheet. No per-row
+   stagger, no scale: the panel is short and a single motion reads calmer. */
+@keyframes mobile-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mobile-sheet-in {
+  animation: mobile-sheet-in 140ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sheet-in {
+    animation: none;
+  }
+}
+
+/* UI v2 spacing — the floating pill is `fixed`, so it takes NO space in the
+   flow: the page container has to clear it itself. Offset = pill height (56px)
+   + its top padding (8/12px) + the visual gap (v1's own padding was 32/40px,
+   which read as a hole), so 80px / 96px total works out to a ~16px gap.
+   Every page container carries `.page-shell`, which covers <main> and the plain
+   <div> used by draws / rounds alike. v1 renders without `.ui-v2`. Unlayered on
+   purpose: it must beat the Tailwind padding utility on the same element. */
+.ui-v2 .page-shell {
+  padding-top: 5rem;
+}
+
+@media (min-width: 640px) {
+  .ui-v2 .page-shell {
+    padding-top: 6rem;
+  }
+}
+
+/* UI v2 nav rows — the nav reads as plain text, so the glyphs sit slightly
+   smaller and thinner than the shared 18px/1.8 Icon default. Lucide renders
+   size + strokeWidth as attributes, which CSS overrides. */
+.ui-v2 .nav-link svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.6;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pool-sheen,
   .pool-coin-float {

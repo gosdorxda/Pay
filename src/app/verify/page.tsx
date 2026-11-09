@@ -242,9 +242,9 @@ export default function VerifyPage() {
 
   return (
     <AppShell title="Verify">
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
-        <div className="max-w-3xl flex flex-col gap-6">
-          <header>
+      <main className="page-shell mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
+        <div className="page-intro flex flex-col gap-6">
+          <header className="max-w-3xl">
             <Typography type="h4">Check a draw yourself</Typography>
             <Typography type="body-sm" color="muted" className="mt-1.5">
               Draws start with a random number that drand publishes: a public beacon run by

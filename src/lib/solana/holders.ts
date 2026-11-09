@@ -41,6 +41,10 @@ const PAGE_LIMIT = 1_000;
 /** Safety net against a misbehaving RPC that never returns a null key. */
 const MAX_PAGES = 500;
 const FETCH_TIMEOUT_MS = 30_000;
+/** DAS getTokenAccounts page size (docs: max 1,000 per page). */
+const DAS_PAGE_LIMIT = 1_000;
+/** 429/5xx retry budget for the DAS pager. */
+const DAS_MAX_RETRIES = 5;
 
 /** One token account, as decoded from either RPC method. */
 type RawTokenAccount = {
@@ -59,6 +63,54 @@ type ProgramAccountsV2Response = {
   };
   error?: { code?: number; message?: string };
 };
+
+/** Shape of a Helius DAS `getTokenAccounts` response. */
+type DasTokenAccountsResponse = {
+  result?: {
+    token_accounts?: Array<{
+      address: string;
+      mint: string;
+      owner: string;
+      /** Integer balance as a number — big balances stay exact below 2^53. */
+      amount: number;
+      frozen?: boolean;
+    }>;
+    cursor?: string | null;
+    total?: number;
+    limit?: number;
+  };
+  error?: { code?: number; message?: string };
+};
+
+class RpcHttpError extends Error {
+  constructor(
+    public status: number,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
+/** POST one JSON-RPC call with timeout; throws RpcHttpError on non-200. */
+async function rpcPost(
+  rpcUrl: string,
+  body: unknown
+): Promise<{ http: number; json: any }> {
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status !== 200) {
+    throw new RpcHttpError(
+      res.status,
+      `HTTP ${res.status} ${res.statusText}`
+    );
+  }
+  return { http: 200, json: await res.json() };
+}
 
 /**
  * Pulls the fields we care about out of a `jsonParsed` token-account payload.
@@ -81,6 +133,72 @@ function parseTokenAccount(
   const amount = info?.tokenAmount?.amount;
   if (!owner || amount === undefined) return null;
   return { pubkey, owner, amount };
+}
+
+/**
+ * Fetches every token account of `mint` via Helius DAS `getTokenAccounts`
+ * (params: { mint, page, limit }) — the indexer-backed read designed exactly
+ * for this: per-mint holder listing without scanning a whole token program.
+ *
+ * Works for BOTH standard SPL and Token-2022 mints (the indexer tracks both),
+ * needs no token-program resolution at all, and does not hit the
+ * "Too many accounts requested" ceiling of legacy `getProgramAccounts`.
+ * Returns null when the RPC is not Helius (method not found) so the caller can
+ * fall through to the paginated V2 scan.
+ */
+async function fetchTokenAccountsDas(
+  rpcUrl: string,
+  mint: PublicKey
+): Promise<RawTokenAccount[] | null> {
+  const accounts: RawTokenAccount[] = [];
+  let page = 1;
+
+  // Retry budget is shared across the whole pager, so a flaky RPC can't spin.
+  let retriesLeft = DAS_MAX_RETRIES;
+  while (page <= MAX_PAGES) {
+    let json: DasTokenAccountsResponse;
+    try {
+      json = (await rpcPost(rpcUrl, {
+        jsonrpc: "2.0",
+        id: "holders",
+        method: "getTokenAccounts",
+        params: { mint: mint.toBase58(), page, limit: DAS_PAGE_LIMIT },
+      })).json as DasTokenAccountsResponse;
+    } catch (e) {
+      // 429 / 5xx: back off and retry the same page a bounded number of times.
+      const status = e instanceof RpcHttpError ? e.status : 0;
+      if ((status === 429 || status >= 500) && retriesLeft > 0) {
+        retriesLeft--;
+        const waitMs = 500 * Math.pow(2, DAS_MAX_RETRIES - retriesLeft - 1);
+        console.warn(`[holders] DAS page ${page} ${status} — retry in ${waitMs}ms`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      throw e;
+    }
+
+    if (json.error) {
+      // Method not implemented (non-Helius RPC) → caller falls back.
+      if (json.error.code === -32601) return null;
+      throw new Error(`getTokenAccounts failed: ${json.error.message ?? "unknown"}`);
+    }
+
+    for (const t of json.result?.token_accounts ?? []) {
+      if (!t.owner || t.amount === undefined) continue;
+      accounts.push({
+        pubkey: t.address,
+        owner: t.owner,
+        amount: String(t.amount),
+      });
+    }
+
+    const cursor = json.result?.cursor;
+    const got = json.result?.token_accounts?.length ?? 0;
+    if (!cursor || got === 0) break;
+    page++;
+  }
+
+  return accounts;
 }
 
 /**
@@ -110,14 +228,12 @@ async function fetchTokenAccountsV2(
   const out: RawTokenAccount[] = [];
   let paginationKey: string | null = null;
   let pages = 0;
+  let retriesLeft = DAS_MAX_RETRIES;
 
   do {
-    const res = await fetch(rpcUrl, {
-      method: "POST",
-      cache: "no-store",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    let json: ProgramAccountsV2Response;
+    try {
+      json = (await rpcPost(rpcUrl, {
         jsonrpc: "2.0",
         id: "holders",
         method: "getProgramAccountsV2",
@@ -131,15 +247,19 @@ async function fetchTokenAccountsV2(
             ...(paginationKey ? { paginationKey } : {}),
           },
         ],
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(
-        `getProgramAccountsV2 failed: HTTP ${res.status} ${res.statusText}`
-      );
+      })).json as ProgramAccountsV2Response;
+    } catch (e) {
+      const status = e instanceof RpcHttpError ? e.status : 0;
+      if ((status === 429 || status >= 500) && retriesLeft > 0) {
+        retriesLeft--;
+        const waitMs = 500 * Math.pow(2, DAS_MAX_RETRIES - retriesLeft - 1);
+        console.warn(`[holders] V2 page ${pages + 1} ${status} — retry in ${waitMs}ms`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      throw e;
     }
 
-    const json = (await res.json()) as ProgramAccountsV2Response;
     if (json.error) {
       // Method not implemented / disabled on this RPC → caller falls back.
       if (json.error.code === -32601) return null;
@@ -192,6 +312,7 @@ async function fetchHolders(cfg: LotteryConfig): Promise<Holder[]> {
   const mint = new PublicKey(cfg.tokenMint);
 
   // Resolve the program that owns this mint (Token / Token-2022 / ...).
+  // Only needed by the V2/legacy fallbacks — the DAS path is mint-only.
   const mintInfo = await connection.getAccountInfo(mint);
   if (!mintInfo) {
     throw new Error(
@@ -200,18 +321,31 @@ async function fetchHolders(cfg: LotteryConfig): Promise<Holder[]> {
   }
   const tokenProgram = mintInfo.owner;
 
-  // Preferred path: paginated getProgramAccountsV2 (no account-count ceiling).
-  // Falls back to the legacy one-shot query when the RPC lacks the method.
-  const raw = await fetchTokenAccountsV2(cfg.rpcUrl, tokenProgram, mint).catch(
-    (e) => {
-      console.warn(
-        `[holders] getProgramAccountsV2 unavailable: ${(e as Error).message}`
-      );
-      return null;
-    }
-  );
+  // 1st: Helius DAS getTokenAccounts — indexer read, per-mint, no program
+  // scan. Handles busy standard-token programs (bags.fm mints) without ever
+  // triggering "Too many accounts requested". Retries 429/5xx internally.
+  // 2nd: paginated getProgramAccountsV2 (no ceiling, but can hit RPC rate
+  // limits on the huge standard token program).
+  // 3rd: legacy one-shot getProgramAccounts (works on small/quiet programs).
+  const rawDas = await fetchTokenAccountsDas(cfg.rpcUrl, mint).catch((e) => {
+    console.warn(`[holders] DAS getTokenAccounts unavailable: ${(e as Error).message}`);
+    return null;
+  });
 
-  const accounts = raw ?? (await fetchTokenAccountsLegacy(connection, tokenProgram, mint));
+  let accounts: RawTokenAccount[];
+  if (rawDas) {
+    accounts = rawDas;
+  } else {
+    const rawV2 = await fetchTokenAccountsV2(cfg.rpcUrl, tokenProgram, mint).catch(
+      (e) => {
+        console.warn(
+          `[holders] getProgramAccountsV2 unavailable: ${(e as Error).message}`
+        );
+        return null;
+      }
+    );
+    accounts = rawV2 ?? (await fetchTokenAccountsLegacy(connection, tokenProgram, mint));
+  }
 
   const holders: Holder[] = [];
   for (const a of accounts) {

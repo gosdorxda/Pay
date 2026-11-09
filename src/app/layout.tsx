@@ -7,6 +7,9 @@ import { SiteProvider } from "@/components/providers/SiteProvider";
 import { getSiteSeo, faviconUrl, parseFavicon } from "@/lib/seo";
 import { getPaletteCss } from "@/lib/palette";
 import { getFontConfig, getFontCss } from "@/lib/font";
+import { getDefaultTheme } from "@/lib/theme";
+import { getHeroCopy, renderHeroText } from "@/lib/hero";
+import { effectiveValue } from "@/lib/settings";
 
 /**
  * Geist Sans (Vercel) — the single global typeface for the whole UI.
@@ -98,10 +101,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * Applied synchronously, before first paint, to set the `data-theme` attribute
- * on <html> from the stored preference (defaulting to dark). Prevents a flash
- * of the wrong theme. HeroUI v3 drives dark mode via `[data-theme="dark"]` CSS.
+ * on <html> from the stored preference. Prevents a flash of the wrong theme.
+ * HeroUI v3 drives dark mode via `[data-theme="dark"]` CSS.
+ *
+ * The fallback (no stored preference) is the admin-editable default from
+ * `lib/theme.ts` (Admin → Appearance), so a fresh visitor can start light or
+ * dark; an existing visitor always keeps their own toggle choice.
  */
-const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t?t==='dark':true;document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`;
+function themeInitScript(fallback: "dark" | "light" = "dark"): string {
+  return `(function(){try{var t=localStorage.getItem('theme');var d=t?t==='dark':${fallback === "dark"};document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','${fallback}');}})();`;
+}
 
 export default async function RootLayout({
   children,
@@ -116,6 +125,15 @@ export default async function RootLayout({
   // absent for the default face (Geist is bundled with the build).
   const font = await getFontConfig();
   const fontCss = await getFontCss();
+  // Admin → Appearance: which theme a visitor with no stored choice gets.
+  const defaultTheme = await getDefaultTheme();
+  // Admin → Hero: the homepage pitch. Placeholders resolved once here so the
+  // client component only ever receives plain strings.
+  const hero = await getHeroCopy();
+  const heroVars = {
+    tokenName: seo.tokenName,
+    winnerCount: Number(effectiveValue("WINNER_COUNT")) || 3,
+  };
   // Re-validate before injecting: a stale malformed value must never end up in
   // an inline <script>.
   const gaId = /^G-[A-Z0-9]{4,20}$/i.test(seo.gaMeasurementId)
@@ -149,7 +167,7 @@ export default async function RootLayout({
         {fontCss ? (
           <style id="theme-font" dangerouslySetInnerHTML={{ __html: fontCss }} />
         ) : null}
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript(defaultTheme) }} />
         {gaId ? (
           <>
             <Script
@@ -170,6 +188,11 @@ export default async function RootLayout({
               faviconUrl: faviconUrl(seo.favicon),
               siteTitle: seo.siteTitle,
               description: seo.description,
+              hero: {
+                headline: renderHeroText(hero.headline, heroVars),
+                accent: renderHeroText(hero.accent, heroVars),
+                body: renderHeroText(hero.body, heroVars),
+              },
             }}
           >
             {children}

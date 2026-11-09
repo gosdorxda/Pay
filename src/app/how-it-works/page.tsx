@@ -24,10 +24,11 @@ export default function HowItWorksPage() {
   const { tokenName } = useSite();
   return (
     <AppShell title="How it works">
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
-        <div className="max-w-3xl flex flex-col">
-        {/* Header */}
-        <header className="pb-8 border-b border-(--border)">
+      <main className="page-shell mx-auto max-w-7xl px-4 sm:px-6 lg:px-10 pt-8 sm:pt-10 pb-12">
+        <div className="page-intro flex flex-col">
+        {/* Header — capped so the lede line stays readable; everything below it
+            uses the full page width like the other routes. */}
+        <header className="max-w-3xl pb-8 border-b border-(--border)">
           <Typography type="h4">How draws work</Typography>
           <Typography type="body-sm" color="muted" className="mt-1.5">
             Hold at least the minimum {tokenName} and you are on the list for every draw, with

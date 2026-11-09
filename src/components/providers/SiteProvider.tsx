@@ -20,6 +20,8 @@ export type SiteBrand = {
   faviconUrl: string;
   siteTitle: string;
   description: string;
+  /** Homepage hero copy (Admin → Hero), already resolved with placeholders. */
+  hero: { headline: string; accent: string; body: string };
 };
 
 const FALLBACK: SiteBrand = {
@@ -30,6 +32,11 @@ const FALLBACK: SiteBrand = {
   siteTitle: "PAY Token Lottery",
   description:
     "A verifiable holder lottery for the PAY token on Solana, powered by drand randomness.",
+  hero: {
+    headline: "Hold PAY.",
+    accent: "Win the pool.",
+    body: "100% of creator fees go into the pool. Meet the minimum hold and you’re in. Each round, 3 holders are drawn at random and paid in SOL.",
+  },
 };
 
 const SiteContext = createContext<SiteBrand>(FALLBACK);

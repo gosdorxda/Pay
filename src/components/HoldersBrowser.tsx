@@ -117,7 +117,7 @@ export function HoldersBrowser({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="max-w-3xl">
+      <div className="page-intro max-w-3xl">
         <Typography type="h4">{title}</Typography>
         <Typography type="body-sm" color="muted" className="mt-1.5">
           {subtitle}
