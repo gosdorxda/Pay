@@ -358,7 +358,7 @@ export function SeoPanel() {
               </Field>
               <Field
                 label="Meta description"
-                hint={`Shown in search results and link previews · ${draft.description.length}/320`}
+                hint={`Shown in search results and link previews (X, Facebook) · ${draft.description.length}/320 · supports {tokenName} and {brandName}`}
                 error={errors.description}
               >
                 <TextField

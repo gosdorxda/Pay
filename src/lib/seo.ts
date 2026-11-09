@@ -85,11 +85,11 @@ const envTokenName =
 export const SEO_DEFAULTS: SiteSeo = {
   brandName: "Pay",
   tokenName: envTokenName || "PAY",
-  siteTitle: "PAY Token Lottery",
+  siteTitle: "{tokenName} Token Lottery",
   description:
-    "A verifiable holder lottery for the PAY token on Solana, powered by drand randomness.",
+    "A verifiable holder lottery for the {tokenName} token on Solana, powered by drand randomness.",
   keywords:
-    "PAY token, Solana lottery, holder lottery, drand, provably fair, SOL prize",
+    "{tokenName} token, Solana lottery, holder lottery, drand, provably fair, SOL prize",
   siteUrl: envSiteUrl.replace(/\/+$/, ""),
   ogImage: "",
   twitterHandle: "",
@@ -99,6 +99,40 @@ export const SEO_DEFAULTS: SiteSeo = {
   allowIndexing: true,
   googleSiteVerification: "",
   favicon: "",
+};
+
+/**
+ * Resolve the supported placeholders in title/description/keywords.
+ *
+ * `{tokenName}` and `{brandName}` let an organiser keep the metadata in sync
+ * with Admin → SEO without retyping it: the stored value is a template, and
+ * this runs on read (see `getSiteSeo`). Unknown braces are left alone so a
+ * stray `{` can never break a share card.
+ */
+export function renderSeoText(
+  template: string,
+  values: { tokenName: string; brandName: string }
+): string {
+  return template
+    .split("{tokenName}").join(values.tokenName)
+    .split("{brandName}").join(values.brandName);
+}
+
+/** Fields that accept placeholders (everything shown in a share card). */
+const TEMPLATE_FIELDS = ["siteTitle", "description", "keywords"] as const;
+
+/**
+ * Legacy default strings, saved by older builds before placeholders existed.
+ * A row holding one of these verbatim is rewritten to the template on read —
+ * otherwise a site that once saved the default would keep showing "PAY" in its
+ * share card even after the token name changed.
+ */
+const LEGACY_DEFAULTS: Record<string, string> = {
+  "PAY Token Lottery": "{tokenName} Token Lottery",
+  "A verifiable holder lottery for the PAY token on Solana, powered by drand randomness.":
+    "A verifiable holder lottery for the {tokenName} token on Solana, powered by drand randomness.",
+  "PAY token, Solana lottery, holder lottery, drand, provably fair, SOL prize":
+    "{tokenName} token, Solana lottery, holder lottery, drand, provably fair, SOL prize",
 };
 
 /** Serialise one field for the key/value store. */
@@ -140,6 +174,19 @@ export const getSiteSeo = cache(async (): Promise<SiteSeo> => {
       (e as Error).message
     );
   }
+
+  // Titles/descriptions/keywords may contain placeholders — resolved AFTER
+  // tokenName is final and OUTSIDE the try block, so the fallback defaults are
+  // resolved too ({tokenName} must never leak into a share card).
+  const vars = { tokenName: seo.tokenName, brandName: seo.brandName };
+  for (const field of TEMPLATE_FIELDS) {
+    // A row saved by an older build holds the literal default ("PAY …");
+    // treat it as the template so the share card follows the current name.
+    const legacy = LEGACY_DEFAULTS[seo[field]];
+    if (legacy) seo[field] = legacy;
+    seo[field] = renderSeoText(seo[field], vars);
+  }
+
   return seo;
 });
 

@@ -15,6 +15,7 @@
 import { prisma } from "./prisma";
 import { lamportsToSol } from "./format";
 import { logEvent } from "./log-buffer";
+import { getSiteSeo } from "./seo";
 
 type Channel = "email" | "telegram";
 
@@ -99,11 +100,13 @@ async function sendEmail(
 ): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return false; // email channel not configured
+  // Brand comes from Admin → SEO so a winner email never says an old name.
+  const { brandName } = await getSiteSeo();
   const from =
-    process.env.RESEND_FROM_EMAIL || "Pay Token Lottery <noreply@resend.dev>";
+    process.env.RESEND_FROM_EMAIL || `${brandName} <noreply@resend.dev>`;
   const subject = `🎉 You won round #${ctx.roundNumber} — ${ctx.sol.toFixed(4)} SOL`;
   const html =
-    `<p>You won <strong>rank ${ctx.rank}</strong> in Pay Token Lottery round #${ctx.roundNumber}!</p>` +
+    `<p>You won <strong>rank ${ctx.rank}</strong> in ${brandName} round #${ctx.roundNumber}!</p>` +
     `<p>Payout: <strong>${ctx.sol.toFixed(4)} SOL</strong> to <code>${ctx.address}</code></p>` +
     `<p><a href="${roundLink(ctx.baseUrl, ctx.roundNumber)}">View round proof &amp; winner derivation</a></p>`;
   const res = await fetch("https://api.resend.com/emails", {
@@ -127,8 +130,10 @@ async function sendTelegram(
 ): Promise<boolean> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return false; // telegram channel not configured
+  // Same brand source as the email above (Admin → SEO).
+  const { brandName } = await getSiteSeo();
   const text =
-    `🎉 *You won Pay Token Lottery round #${ctx.roundNumber}!*\n` +
+    `🎉 *You won ${brandName} round #${ctx.roundNumber}!*\n` +
     `Rank: *${ctx.rank}*  •  Payout: *${ctx.sol.toFixed(4)} SOL*\n` +
     `To: \`${ctx.address}\`\n` +
     `[View round proof](${roundLink(ctx.baseUrl, ctx.roundNumber)})`;

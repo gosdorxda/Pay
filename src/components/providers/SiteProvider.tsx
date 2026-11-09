@@ -29,13 +29,13 @@ const FALLBACK: SiteBrand = {
   social: { x: "", telegram: "" },
   tokenName: "PAY",
   faviconUrl: "",
-  siteTitle: "PAY Token Lottery",
+  siteTitle: "Pay Token Lottery",
   description:
-    "A verifiable holder lottery for the PAY token on Solana, powered by drand randomness.",
+    "A verifiable holder lottery on Solana, powered by drand randomness.",
   hero: {
-    headline: "Hold PAY.",
+    headline: "Hold {tokenName}.",
     accent: "Win the pool.",
-    body: "100% of creator fees go into the pool. Meet the minimum hold and you’re in. Each round, 3 holders are drawn at random and paid in SOL.",
+    body: "100% of creator fees go into the pool. Meet the minimum hold and you’re in. Each round, {winnerCount} holders are drawn at random and paid in SOL.",
   },
 };
 
