@@ -12,6 +12,7 @@ import {
 } from "@heroui/react";
 import { DrandBeacon } from "@/components/DrandBeacon";
 import { Icon, SkeletonRows } from "@/components/ui";
+import { useSite } from "@/components/providers/SiteProvider";
 import { fmtDateTimeUtc, fmtSolHuman, timeAgo } from "@/lib/format";
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -208,6 +209,9 @@ function DrawRow({
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  // Engine step reads the brand (Admin → SEO) instead of a hardcoded name.
+  const { brandName } = useSite();
+
 
   // Winners arrive in payout order, but rank is the contract.
   const ranked = [...round.winners].sort((a, b) => a.rank - b.rank);
@@ -246,7 +250,7 @@ function DrawRow({
           <span className="flex w-[14rem] shrink-0 items-center gap-2">
             <Step src="/flow/pumpfun.png" label="Creator fee from Bags.fm" />
             <ArrowRight size={12} className="text-muted/50" aria-hidden="true" />
-            <Step src="/flow/pay.png" label="Shuffled by the Pay engine" />
+            <Step src="/flow/pay.png" label={`Shuffled by the ${brandName} engine`} />
             <ArrowRight size={12} className="text-muted/50" aria-hidden="true" />
             <Step src="/flow/drand.png" label="Seeded by drand" />
             <ArrowRight size={12} className="text-muted/50" aria-hidden="true" />
