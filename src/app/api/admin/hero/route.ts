@@ -4,6 +4,7 @@ import { isAdmin } from "@/lib/admin-guard";
 import {
   HERO_DEFAULTS,
   HERO_LIMITS,
+  LAUNCHPAD_PRESETS,
   getHeroCopy,
   saveHeroCopy,
 } from "@/lib/hero";
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest) {
       hero: await getHeroCopy(),
       defaults: HERO_DEFAULTS,
       limits: HERO_LIMITS,
+      presets: [...LAUNCHPAD_PRESETS],
     });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

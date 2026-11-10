@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
@@ -482,8 +482,11 @@ export default function HowItWorksFlow({
   payoutDistribution?: number[];
 }) {
   // Card title comes from the admin brand name (SiteProvider), so the flow never
-  // shows a stale hardcoded wordmark like the old "Pay engine".
-  const { brandName } = useSite();
+  // shows a stale hardcoded wordmark like the old "Pay engine". The launchpad
+  // step follows Admin → Hero → Launchpad, so switching venue (bags.fm ⇄ pump.fun)
+  // needs no code change.
+  const { brandName, launchpad } = useSite();
+  const launchpadLabel = `${launchpad} trading`;
   const reduceMotion = useReducedMotion();
   const reduced = Boolean(reduceMotion);
   const progress = useFlowProgress(reduced);
@@ -510,7 +513,7 @@ export default function HowItWorksFlow({
       {/* ===================== Desktop ===================== */}
       <div
         className="relative hidden min-h-[390px] lg:block"
-        aria-label={`Bags.fm creator fee flows through the ${brandName} engine and drand to the winners`}
+        aria-label={`${launchpad} creator fee flows through the ${brandName} engine and drand to the winners`}
       >
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full"
@@ -542,7 +545,7 @@ export default function HowItWorksFlow({
           <Node
             icon={<Zap size={18} />}
             image={ART.pumpfun}
-            title="Bags.fm trading"
+            title={launchpadLabel}
             active={pumping}
             subtitle={pumping ? <FeeCharge active /> : "creator fees"}
             badgeClassName="bg-success/10 text-success ring-1 ring-inset ring-success/20"
@@ -587,7 +590,7 @@ export default function HowItWorksFlow({
       {/* ===================== Mobile ===================== */}
       <div
         className="flex flex-col gap-2 lg:hidden"
-        aria-label={`Bags.fm creator fee flows through the ${brandName} engine and drand to the winners`}
+        aria-label={`${launchpad} creator fee flows through the ${brandName} engine and drand to the winners`}
       >
         {/* Phones keep the flow as a centred column of capped cards, but each
             card is left-aligned exactly like the desktop tile (badge left, copy
@@ -600,7 +603,7 @@ export default function HowItWorksFlow({
           <Node
             icon={<Zap size={18} />}
             image={ART.pumpfun}
-            title="Bags.fm trading"
+            title={launchpadLabel}
             active={pumping}
             subtitle={pumping ? <FeeCharge active /> : "creator fees"}
             badgeClassName="bg-success/10 text-success ring-1 ring-inset ring-success/20"

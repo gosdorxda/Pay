@@ -23,6 +23,11 @@ export type SiteBrand = {
   /** Homepage hero copy (Admin → Hero), already resolved with placeholders. */
   hero: { headline: string; accent: string; body: string };
   /**
+   * Launchpad credited by the animated flow and by the prize-pool card's
+   * "Verify fees" link (Admin → Hero → Launchpad). "Bags.fm" / "Pump.fun" / …
+   */
+  launchpad: string;
+  /**
    * Which UI shell to render ("1" sidebar, "2" floating nav). Resolved on the
    * SERVER from env at request time (see `app/layout.tsx`), not inlined into
    * the client bundle — so flipping it needs no rebuild.
@@ -43,6 +48,7 @@ const FALLBACK: SiteBrand = {
     accent: "Win the pool.",
     body: "100% of creator fees go into the pool. Meet the minimum hold and you’re in. Each round, {winnerCount} holders are drawn at random and paid in SOL.",
   },
+  launchpad: "Bags.fm",
   uiVersion: "1",
 };
 

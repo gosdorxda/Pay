@@ -14,6 +14,7 @@ import { FloatingNav } from "@/components/FloatingNav";
 import { INFORMATION, NAV, isNavActive } from "@/components/nav";
 import { useSite } from "@/components/providers/SiteProvider";
 import { nextCronOccurrence } from "@/lib/cron-next";
+import { launchpadHostLabel, launchpadTokenUrl } from "@/lib/hero";
 import {
   explorerUrl,
   fmtSolHuman,
@@ -433,7 +434,7 @@ export default function Home() {
   const uiVersion = useUiVersion();
   const isV2 = uiVersion === "2";
   const pathname = usePathname();
-  const { brandName, tokenName, social, hero } = useSite();
+  const { brandName, tokenName, social, hero, launchpad } = useSite();
   // Sidebar social links are admin-editable (Admin → SEO); empty = hidden.
   const socialLinks = INFORMATION.map((item) => ({
     ...item,
@@ -1051,15 +1052,16 @@ export default function Home() {
                   ) : status?.tokenMint ? (
                     /* Replaces the old "Last claimed" timestamp: instead of an
                        age that says nothing verifiable, link straight to the
-                       token page on bags.fm where the fee ledger lives. */
+                       token page on the venue the admin selected (Admin → Hero →
+                       Launchpad), where the fee ledger lives. */
                     <a
-                      href={`https://bags.fm/${status.tokenMint}`}
+                      href={launchpadTokenUrl(launchpad, status.tokenMint)}
                       target="_blank"
                       rel="noreferrer noopener"
-                      title="Open the token page on bags.fm to check the fee ledger"
+                      title={`Open the token page on ${launchpadHostLabel(launchpad)} to check the fee ledger`}
                       className="inline-flex items-center gap-1 font-mono text-sm font-normal tabular-nums text-muted transition-colors hover:text-foreground"
                     >
-                      bags.fm
+                      {launchpadHostLabel(launchpad)}
                       <Icon
                         name="arrow-up-right"
                         className="h-3.5 w-3.5 opacity-50"

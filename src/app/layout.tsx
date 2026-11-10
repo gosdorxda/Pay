@@ -194,6 +194,7 @@ export default async function RootLayout({
                 accent: renderHeroText(hero.accent, heroVars),
                 body: renderHeroText(hero.body, heroVars),
               },
+              launchpad: hero.launchpad,
               uiVersion: getServerUiVersion(),
             }}
           >

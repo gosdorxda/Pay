@@ -29,16 +29,17 @@ import {
  * Leaving a field empty restores its default (the row is deleted).
  */
 
-type HeroCopy = { headline: string; accent: string; body: string };
+type HeroCopy = { headline: string; accent: string; body: string; launchpad: string };
 type HeroResponse = {
   hero?: HeroCopy;
   defaults?: HeroCopy;
   limits?: Record<keyof HeroCopy, number>;
+  presets?: string[];
   errors?: Partial<Record<keyof HeroCopy, string>>;
   error?: string;
 };
 
-const EMPTY: HeroCopy = { headline: "", accent: "", body: "" };
+const EMPTY: HeroCopy = { headline: "", accent: "", body: "", launchpad: "" };
 
 export function HeroPanel() {
   const [saved, setSaved] = useState<HeroCopy>(EMPTY);
@@ -48,7 +49,14 @@ export function HeroPanel() {
     headline: 60,
     accent: 60,
     body: 400,
+    launchpad: 24,
   });
+  const [presets, setPresets] = useState<string[]>([
+    "Bags.fm",
+    "Pump.fun",
+    "Raydium",
+    "Meteora",
+  ]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -70,6 +78,7 @@ export function HeroPanel() {
         setDraft(h);
         if (data.defaults) setDefaults(data.defaults);
         if (data.limits) setLimits(data.limits);
+        if (data.presets) setPresets(data.presets);
       } catch (e) {
         if (alive) setErr((e as Error).message);
       } finally {
@@ -117,7 +126,8 @@ export function HeroPanel() {
   const dirty =
     draft.headline !== saved.headline ||
     draft.accent !== saved.accent ||
-    draft.body !== saved.body;
+    draft.body !== saved.body ||
+    draft.launchpad !== saved.launchpad;
 
   return (
     <Card>
@@ -179,6 +189,40 @@ export function HeroPanel() {
                 </p>
               </TextField>
             </div>
+
+            <TextField className="flex flex-col gap-1.5">
+              <Label>Launchpad</Label>
+              <Input
+                value={draft.launchpad}
+                onChange={(e) => set("launchpad", e.target.value)}
+                placeholder={defaults.launchpad}
+                maxLength={limits.launchpad}
+              />
+              <p className="text-xs text-muted">
+                Drives the flow card (&ldquo;Launchpad trading&rdquo;) and the
+                prize-pool card&rsquo;s Verify fees link. Free text — matching is
+                on the first word, so{" "}
+                <span className="text-foreground">pump.fun</span> opens pump.fun,
+                anything else defaults to bags.fm.
+              </p>
+            </TextField>
+
+            {presets.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-muted">Quick pick:</span>
+                {presets.map((preset) => (
+                  <Button
+                    key={preset}
+                    size="sm"
+                    variant={draft.launchpad === preset ? "primary" : "secondary"}
+                    aria-pressed={draft.launchpad === preset}
+                    onPress={() => set("launchpad", preset)}
+                  >
+                    {preset}
+                  </Button>
+                ))}
+              </div>
+            )}
 
             <TextField className="flex flex-col gap-1.5">
               <Label>Paragraph</Label>
