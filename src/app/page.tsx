@@ -1045,19 +1045,29 @@ export default function Home() {
                   )}
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted">Last claimed</span>
+                  <span className="text-xs text-muted">Verify fees</span>
                   {loading ? (
                     <Skeleton className="h-4 w-20" />
-                  ) : (
-                    <span
-                      className="font-mono text-sm font-normal tabular-nums"
-                      title={
-                        fees?.lastClaimed
-                          ? `${fmtSolHuman(fees.lastClaimed.amountSol)} SOL swept ${fees.lastClaimed.source === "bags.fm" ? "on bags.fm" : fees.lastClaimed.source === "auto" ? "automatically" : "manually"}.`
-                          : "No creator-fee sweep recorded yet."
-                      }
+                  ) : status?.tokenMint ? (
+                    /* Replaces the old "Last claimed" timestamp: instead of an
+                       age that says nothing verifiable, link straight to the
+                       token page on bags.fm where the fee ledger lives. */
+                    <a
+                      href={`https://bags.fm/${status.tokenMint}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      title="Open the token page on bags.fm to check the fee ledger"
+                      className="inline-flex items-center gap-1 font-mono text-sm font-normal tabular-nums text-muted transition-colors hover:text-foreground"
                     >
-                      {fees?.lastClaimed ? timeAgo(fees.lastClaimed.at) : "—"}
+                      bags.fm
+                      <Icon
+                        name="arrow-up-right"
+                        className="h-3.5 w-3.5 opacity-50"
+                      />
+                    </a>
+                  ) : (
+                    <span className="font-mono text-sm font-normal text-muted">
+                      —
                     </span>
                   )}
                 </div>
