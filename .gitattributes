@@ -1,2 +1,7 @@
-# Auto detect text files and perform LF normalization
+# UI v2 / RecentDraws — tetap LF agar aman di Linux
 * text=auto
+
+# Shell script harus LF; CRLF membuat `./deploy.sh` gagal dengan
+# "bad interpreter: /usr/bin/env bash^M" di VPS.
+*.sh text eol=lf
+

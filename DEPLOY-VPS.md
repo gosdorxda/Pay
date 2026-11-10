@@ -899,6 +899,47 @@ Angka acuan saat serah-terima (23–24 Okt 2026): `holders ≈ 509`, `lastRound.
 
 ## 11. Update / deploy ulang
 
+### Cara cepat: skrip `deploy.sh` (disarankan)
+
+Semua langkah di bawah sudah dibungkus satu skrip di root repo:
+
+```bash
+cd /var/www/pay
+sudo -u pay ./deploy.sh
+```
+
+Skripnya melakukan **stop → git pull → npm ci → prisma generate → tsc → build →
+start → cek HTTP :3000**, dengan tiga pengaman:
+
+- **Service dihentikan sebelum build** (aturan §7) dan **selalu dinyalakan lagi**
+  lewat `trap`, bahkan kalau Anda menekan Ctrl-C di tengah proses.
+- **Rollback otomatis**: `.next` lama disalin ke `.next.prev` sebelum build; kalau
+  `npm run build` gagal, `.next` lama dipulihkan dan service dinyalakan dengan
+  build sebelumnya — bukan halaman putih.
+- **`tsc --noEmit` sebagai gerbang**: type error = berhenti sebelum menyentuh
+  `.next` sama sekali.
+
+Opsi:
+
+```bash
+sudo -u pay ./deploy.sh --no-pull       # kode sudah di-rsync manual
+sudo -u pay ./deploy.sh --skip-install  # dependensi tidak berubah
+sudo -u pay ./deploy.sh --dry-run       # hanya menampilkan langkahnya
+```
+
+Mendeteksi supervisor sendiri (systemd `pay.service` atau PM2 `pay`). Kalau nama
+berbeda, beri env: `SERVICE_NAME=… PM2_APP_NAME=… APP_USER=… ./deploy.sh`.
+
+Satu kali setelah `git pull`: pastikan ada bit executable. Line-ending sudah
+dipaksa LF oleh `.gitattributes` (`*.sh text eol=lf`), jadi tidak perlu
+konversi manual — cukup:
+
+```bash
+sudo chmod +x deploy.sh
+```
+
+### Cara manual (referensi)
+
 ```bash
 cd /var/www/pay
 
