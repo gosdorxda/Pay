@@ -542,7 +542,7 @@ export default function HowItWorksFlow({
           <Node
             icon={<Zap size={18} />}
             image={ART.pumpfun}
-            title="Bags.fm trading"
+            title="Pump.fun trading"
             active={pumping}
             subtitle={pumping ? <FeeCharge active /> : "creator fees"}
             badgeClassName="bg-success/10 text-success ring-1 ring-inset ring-success/20"
@@ -600,7 +600,7 @@ export default function HowItWorksFlow({
           <Node
             icon={<Zap size={18} />}
             image={ART.pumpfun}
-            title="Bags.fm trading"
+            title="Pump.fun trading"
             active={pumping}
             subtitle={pumping ? <FeeCharge active /> : "creator fees"}
             badgeClassName="bg-success/10 text-success ring-1 ring-inset ring-success/20"
